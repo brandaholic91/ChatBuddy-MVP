@@ -333,21 +333,26 @@ response = chatbot.invoke({"messages": [{"role": "user", "content": "Keresek tel
 - **Rate limiting és abuse protection** FastAPI middleware-rel
 - **Enterprise security** LangGraph prebuilt security features-szel
 
-## Hozzájárulás
+## Fejlesztési Folyamat
 
-1. Fork-olja a repot
-2. Hozzon létre egy feature branch-et
-3. Commit-olja a changes-eket
-4. Push-olja a branch-et
-5. Hozzon létre egy Pull Request-et
+### Kód Minőség
+- Black formázás: `black src/`
+- Import rendezés: `isort src/`
+- Típus ellenőrzés: `mypy src/`
+- Tesztelés: `pytest`
+
+### Git Workflow
+- Feature branch-ek használata
+- Jelentőségű commit üzenetek
+- Code review folyamat
 
 ## Licenc
 
-Ez a projekt privát használatra készült.
+Ez a projekt privát kereskedelmi használatra készült.
 
 ## Kapcsolat
 
-A fejlesztéssel kapcsolatos kérdések esetén vegye fel velünk a kapcsolatot.
+A fejlesztéssel kapcsolatos kérdések esetén vegye fel a kapcsolatot a projekt tulajdonosával.
 
 ---
 
