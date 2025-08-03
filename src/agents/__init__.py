@@ -9,14 +9,14 @@ This module contains specialized AI agents for different customer service scenar
 - Marketing agent for automation workflows
 """
 
-# Agent exports (will be implemented)
-# from .coordinator import coordinator_agent
-# from .product_info import product_info_agent
+# Agent exports
+from .coordinator import get_coordinator_agent
+from .product_info import get_product_info_agent
 # from .order_status import order_status_agent
 # from .recommendations import recommendations_agent
 # from .marketing import marketing_agent
 
-# Placeholder exports for now
+# Agent instances - lazy loading to avoid OpenAI API key issues
 coordinator_agent = None
 product_info_agent = None
 order_status_agent = None
