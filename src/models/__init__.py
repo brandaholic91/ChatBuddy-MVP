@@ -7,77 +7,153 @@ This module contains Pydantic models for type-safe data handling:
 - Product information and categories
 - Order management and tracking
 - Agent responses and decisions
+- Marketing automation
 """
 
-from typing import TYPE_CHECKING
+# Chat models
+from .chat import (
+    ChatMessage,
+    ChatSession,
+    ChatState,
+    ChatRequest,
+    ChatResponse,
+    WebSocketMessage,
+    ChatError,
+    MessageType
+)
 
-if TYPE_CHECKING:
-    # Chat models
-    from .chat import ChatMessage, ChatSession, ChatState
-    
-    # User models  
-    from .user import User, UserProfile, UserPreferences
-    
-    # Product models
-    from .product import Product, ProductCategory, ProductInfo
-    
-    # Order models
-    from .order import Order, OrderStatus, OrderItem
-    
-    # Agent models
-    from .agent import AgentDecision, AgentResponse, AgentState
-    
-    # Marketing models
-    from .marketing import EmailTemplate, SMSTemplate, Campaign
+# User models
+from .user import (
+    User,
+    UserProfile,
+    UserPreferences,
+    UserSession,
+    UserActivity,
+    UserAuth,
+    UserRole,
+    UserStatus
+)
 
-# Placeholder exports for now
-ChatMessage = None
-ChatSession = None
-ChatState = None
-User = None
-UserProfile = None
-UserPreferences = None
-Product = None
-ProductCategory = None
-ProductInfo = None
-Order = None
-OrderStatus = None
-OrderItem = None
-AgentDecision = None
-AgentResponse = None
-AgentState = None
-EmailTemplate = None
-SMSTemplate = None
-Campaign = None
+# Product models
+from .product import (
+    Product,
+    ProductCategory,
+    ProductInfo,
+    ProductVariant,
+    ProductReview,
+    ProductSearch,
+    ProductStatus,
+    ProductType
+)
+
+# Order models
+from .order import (
+    Order,
+    OrderItem,
+    OrderStatusHistory,
+    OrderPayment,
+    OrderShipping,
+    OrderRefund,
+    OrderSearch,
+    OrderStatus,
+    PaymentStatus,
+    PaymentMethod,
+    ShippingMethod
+)
+
+# Agent models
+from .agent import (
+    AgentDecision,
+    AgentResponse,
+    AgentState,
+    AgentTool,
+    AgentConversation,
+    AgentPerformance,
+    AgentConfig,
+    AgentType,
+    AgentStatus,
+    DecisionType
+)
+
+# Marketing models
+from .marketing import (
+    EmailTemplate,
+    SMSTemplate,
+    Campaign,
+    AbandonedCart,
+    MarketingMessage,
+    DiscountCode,
+    MarketingMetrics,
+    TemplateType,
+    CampaignType,
+    CampaignStatus
+)
 
 __all__ = [
     # Chat models
     "ChatMessage",
     "ChatSession", 
     "ChatState",
+    "ChatRequest",
+    "ChatResponse",
+    "WebSocketMessage",
+    "ChatError",
+    "MessageType",
     
     # User models
     "User",
     "UserProfile",
     "UserPreferences",
+    "UserSession",
+    "UserActivity",
+    "UserAuth",
+    "UserRole",
+    "UserStatus",
     
     # Product models
     "Product",
     "ProductCategory",
     "ProductInfo",
+    "ProductVariant",
+    "ProductReview",
+    "ProductSearch",
+    "ProductStatus",
+    "ProductType",
     
     # Order models
     "Order",
-    "OrderStatus",
     "OrderItem",
+    "OrderStatusHistory",
+    "OrderPayment",
+    "OrderShipping",
+    "OrderRefund",
+    "OrderSearch",
+    "OrderStatus",
+    "PaymentStatus",
+    "PaymentMethod",
+    "ShippingMethod",
     
     # Agent models
     "AgentDecision",
     "AgentResponse",
     "AgentState",
+    "AgentTool",
+    "AgentConversation",
+    "AgentPerformance",
+    "AgentConfig",
+    "AgentType",
+    "AgentStatus",
+    "DecisionType",
     
     # Marketing models
     "EmailTemplate",
     "SMSTemplate",
-    "Campaign"
+    "Campaign",
+    "AbandonedCart",
+    "MarketingMessage",
+    "DiscountCode",
+    "MarketingMetrics",
+    "TemplateType",
+    "CampaignType",
+    "CampaignStatus"
 ]

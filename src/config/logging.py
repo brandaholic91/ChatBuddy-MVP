@@ -5,7 +5,6 @@ Logging configuration for Chatbuddy MVP.
 import structlog
 import logging
 from typing import Optional
-from pydantic_logfire import LogfireHandler
 
 
 def setup_logging(
@@ -69,11 +68,8 @@ def setup_logging(
     # Add Logfire handler if token provided
     if logfire_token:
         try:
-            logfire_handler = LogfireHandler(
-                token=logfire_token,
-                service_name="chatbuddy-mvp"
-            )
-            logging.getLogger().addHandler(logfire_handler)
+            # Logfire integration temporarily disabled due to compatibility issues
+            logging.warning("Logfire integration temporarily disabled")
         except Exception as e:
             logging.warning(f"Failed to setup Logfire: {e}")
 
