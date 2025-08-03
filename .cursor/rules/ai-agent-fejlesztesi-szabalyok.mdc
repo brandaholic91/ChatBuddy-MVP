@@ -1,0 +1,11 @@
+---
+alwaysApply: false
+applyIntelligently: true
+description: "AI agent fejlesztés, LangGraph, Pydantic AI, tool definitions és performance témákban"
+---
+
+**LangGraph prebuilt**: create_react_agent használata routing-hoz
+**Pydantic AI agents**: Domain logika Pydantic AI-vel
+**Tool definitions**: Minden tool type-safe implementáció
+**Error handling**: Automatikus retry és fallback logika
+**Performance**: < 2 másodperc response time cél

@@ -1,0 +1,11 @@
+---
+alwaysApply: false
+applyIntelligently: true
+description: "Environment variables, Docker, Python verzió, dependency management és security témákban"
+---
+
+**Environment variables**: Minden API kulcs .env fájlban
+**Docker használat**: Fejlesztéshez Docker Compose
+**Python verzió**: 3.11+ kompatibilitás
+**Dependency management**: requirements.txt frissítése
+**Security**: Minden API kulcs biztonságos kezelése

@@ -1,0 +1,11 @@
+---
+alwaysApply: false
+applyIntelligently: true
+description: "Monitoring, logging, performance metrics, health monitoring és error tracking témákban"
+---
+
+**Structured logging**: Pydantic Logfire használata
+**Performance metrics**: Response time és error rate
+**Health monitoring**: Minden szolgáltatás állapota
+**Error tracking**: Hibák részletes naplózása
+**Debug endpoints**: Fejlesztési környezetben debug API-k

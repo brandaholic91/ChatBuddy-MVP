@@ -1,0 +1,11 @@
+---
+alwaysApply: false
+applyIntelligently: true
+description: "Magyar nyelvű kód kommentek, variable naming, error messages és dokumentáció témákban"
+---
+
+**Kód kommentek**: Magyar nyelvű kommentek
+**Variable naming**: Magyar és angol keverése kerülendő
+**Error messages**: Magyar nyelvű hibaüzenetek
+**API responses**: Magyar nyelvű válaszok
+**Dokumentáció**: Magyar nyelvű dokumentáció

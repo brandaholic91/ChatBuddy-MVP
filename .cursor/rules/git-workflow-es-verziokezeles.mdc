@@ -1,0 +1,11 @@
+---
+alwaysApply: false
+applyIntelligently: true
+description: "Git, branch naming, commit üzenetek, pre-commit hooks és code review témákban"
+---
+
+**Branch naming**: feature/[funkció], bugfix/[hiba], hotfix/[sürgős]
+**Commit üzenetek**: Magyar nyelvű, leíró commit üzenetek
+**Pre-commit hooks**: Black, isort, flake8 automatikus futtatása
+**Pull request**: Minden változás PR-en keresztül
+**Code review**: Minden PR review-ja kötelező

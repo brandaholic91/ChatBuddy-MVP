@@ -1,0 +1,11 @@
+---
+alwaysApply: false
+applyIntelligently: true
+description: "Kód minőség, formázás, Black, isort, type hints és dokumentáció témákban"
+---
+
+**Black formázás**: Minden Python fájl Black-kel formázott
+**Import rendezés**: isort használata minden import-nál
+**Type hints**: Minden függvény és osztály type hint-tel
+**Docstring**: Minden publikus függvény/osztály docstring-gel
+**Max sor hossz**: 88 karakter (Black alapérték)

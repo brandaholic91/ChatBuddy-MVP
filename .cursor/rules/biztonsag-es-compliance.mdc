@@ -1,0 +1,11 @@
+---
+alwaysApply: false
+applyIntelligently: true
+description: "Security, GDPR compliance, API security, environment variables és access control témákban"
+---
+
+**GDPR compliance**: PII adatok biztonságos kezelése
+**API security**: Rate limiting és input validáció
+**Environment variables**: Bizalmas adatok .env-ben
+**SSL/TLS**: Production HTTPS használata
+**Access control**: Row Level Security minden táblán

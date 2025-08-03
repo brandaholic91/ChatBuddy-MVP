@@ -1,0 +1,11 @@
+---
+alwaysApply: false
+applyIntelligently: true
+description: "Production deployment, Docker, health checks, logging és security témákban"
+---
+
+**Docker containerization**: Minden komponens container-ben
+**Health checks**: Minden szolgáltatás health check-kel
+**Logging**: Strukturált logging Pydantic Logfire-rel
+**Security**: HTTPS, CORS, rate limiting
+**Backup stratégia**: Adatbázis és fájlok biztonsági mentése

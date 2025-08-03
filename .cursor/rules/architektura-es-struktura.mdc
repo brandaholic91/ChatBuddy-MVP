@@ -1,0 +1,10 @@
+---
+alwaysApply: false
+applyIntelligently: true
+description: "Architektúra és struktúra szabályok a Chatbuddy MVP projekthez
+---
+- **Hibrid architektúra**: LangGraph prebuilt + Pydantic AI
+- **Dependency injection**: Pydantic AI pattern minden agent-nél
+- **Relative imports**: src/ könyvtárból relative import-ok
+- **Moduláris felépítés**: Minden komponens külön modulban
+- **Type safety**: Teljes type safety Pydantic AI-vel

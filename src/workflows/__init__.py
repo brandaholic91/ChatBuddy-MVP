@@ -8,17 +8,17 @@ This module contains LangGraph workflow definitions for:
 - Error handling and recovery
 """
 
-# Workflow exports (will be implemented)
-# from .main_chat import main_chat_workflow
-# from .coordinator import coordinator_workflow
-# from .product_info import product_info_workflow
-# from .order_status import order_status_workflow
-# from .recommendations import recommendations_workflow
-# from .marketing import marketing_workflow
+# Workflow exports
+from .coordinator import (
+    CoordinatorAgent,
+    CoordinatorState,
+    MessageCategory,
+    get_coordinator_agent,
+    process_chat_message
+)
 
-# Placeholder exports for now
+# Placeholder exports for other workflows (will be implemented)
 main_chat_workflow = None
-coordinator_workflow = None
 product_info_workflow = None
 order_status_workflow = None
 recommendations_workflow = None
@@ -26,7 +26,11 @@ marketing_workflow = None
 
 __all__ = [
     "main_chat_workflow",
-    "coordinator_workflow",
+    "CoordinatorAgent",
+    "CoordinatorState", 
+    "MessageCategory",
+    "get_coordinator_agent",
+    "process_chat_message",
     "product_info_workflow",
     "order_status_workflow", 
     "recommendations_workflow",

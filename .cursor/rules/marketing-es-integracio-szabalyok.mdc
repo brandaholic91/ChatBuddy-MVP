@@ -1,0 +1,11 @@
+---
+alwaysApply: false
+applyIntelligently: true
+description: "Marketing automation, multi-channel, template engine, Celery és rate limiting témákban"
+---
+
+**Multi-channel**: Email, SMS, Social media támogatás
+**Template engine**: Jinja2 template-ek használata
+**Celery tasks**: Background processing
+**Rate limiting**: API hívások korlátozása
+**Monitoring**: Teljesítmény és hibák nyomon követése

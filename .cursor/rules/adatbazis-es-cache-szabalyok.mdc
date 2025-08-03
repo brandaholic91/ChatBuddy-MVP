@@ -1,0 +1,11 @@
+---
+alwaysApply: false
+applyIntelligently: true
+description: "Adatbázis, Supabase, Redis, vector embeddings és connection pooling témákban"
+---
+
+**Supabase használat**: PostgreSQL + pgvector
+**Row Level Security**: Minden tábla RLS policy-vel
+**Redis cache**: Session és performance cache
+**Vector embeddings**: OpenAI text-embedding-3-small
+**Connection pooling**: Hatékony adatbázis kapcsolatok

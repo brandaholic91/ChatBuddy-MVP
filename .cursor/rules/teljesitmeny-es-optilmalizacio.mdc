@@ -1,0 +1,11 @@
+---
+alwaysApply: false
+applyIntelligently: true
+description: "Performance, response time, vector search, cache stratégia és memory usage témákban"
+---
+
+**Response time**: < 2 másodperc cél
+**Vector search**: pgvector optimalizált használata
+**Cache stratégia**: Redis cache hatékony használata
+**Database queries**: Optimalizált SQL lekérdezések
+**Memory usage**: Hatékony memóriahasználat

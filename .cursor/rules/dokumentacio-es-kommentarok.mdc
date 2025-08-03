@@ -1,0 +1,11 @@
+---
+alwaysApply: false
+applyIntelligently: true
+description: "Dokumentáció, README, API docs, kommentek és changelog témákban"
+---
+
+**README frissítés**: Minden új funkció dokumentálása
+**API dokumentáció**: FastAPI automatikus docs
+**Kód kommentek**: Magyar nyelvű kommentek
+**Architektúra docs**: docs/ mappában részletes leírások
+**Changelog**: Fontos változások nyomon követése

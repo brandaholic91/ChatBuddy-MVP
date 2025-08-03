@@ -1,0 +1,11 @@
+---
+alwaysApply: false
+applyIntelligently: true
+description: "Tesztelés, unit tesztek, integration tesztek, coverage és pytest témákban"
+---
+
+**Unit tesztek**: Minden agent és komponens unit teszt-tel
+**Integration tesztek**: API és adatbázis kapcsolatok
+**Coverage cél**: Minimum 80% kód lefedettség
+**Test naming**: test_[modul]_[funkció] formátum
+**Async tesztek**: pytest-asyncio használata async kódhoz

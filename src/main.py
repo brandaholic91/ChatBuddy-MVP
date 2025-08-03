@@ -7,9 +7,16 @@ from datetime import datetime
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from dotenv import load_dotenv
 
 from src.config.logging import setup_logging
 from src.config.security import setup_security_middleware, get_security_headers
+from src.workflows.coordinator import process_chat_message
+from src.models.chat import ChatRequest, ChatResponse
+from src.models.user import User
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Setup logging
 setup_logging()
@@ -198,6 +205,50 @@ async def shutdown_event():
     """Application shutdown event."""
     print("🛑 Chatbuddy MVP shutting down...")
     print(f"📅 Stopped at: {datetime.utcnow().isoformat()}")
+
+
+# Chat endpoints
+@app.post("/api/v1/chat", response_model=ChatResponse)
+async def chat_endpoint(request: ChatRequest):
+    """
+    Chat endpoint - Koordinátor Agent használatával.
+    
+    Args:
+        request: Chat kérés
+        
+    Returns:
+        Chat válasz
+    """
+    try:
+        # Felhasználó objektum létrehozása (placeholder)
+        user = None
+        if request.user_id:
+            # Note: ChatRequest nem tartalmaz user_email mezőt
+            user = User(id=request.user_id, email="user@example.com")  # Placeholder email
+        
+        # Koordinátor agent hívása
+        agent_response = await process_chat_message(
+            message=request.message,
+            user=user,
+            session_id=request.session_id
+        )
+        
+        # ChatResponse létrehozása
+        response = ChatResponse(
+            message=agent_response.response_text,  # .content helyett .response_text
+            session_id=request.session_id,
+            timestamp=datetime.utcnow(),
+            agent_used=agent_response.agent_type.value,  # .agent_type helyett .agent_used
+            metadata=agent_response.metadata
+        )
+        
+        return response
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Chat feldolgozási hiba: {str(e)}"
+        )
 
 
 # Development only endpoints
