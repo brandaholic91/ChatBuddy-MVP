@@ -202,6 +202,12 @@ class InputValidator:
             r'data:application/javascript',
             r'expression\(',
             r'url\(',
+            # SQL injection patterns
+            r'\b(union|select|insert|update|delete|drop|create|alter)\b',
+            r'\b(or|and)\b\s+\d+\s*=\s*\d+',
+            r'\b(union|select)\b.*\bfrom\b',
+            r'--\s*$',  # SQL comments
+            r'/\*.*?\*/',  # SQL block comments
         ]
         
         sanitized = input_string
@@ -226,8 +232,8 @@ class InputValidator:
     @staticmethod
     def validate_phone(phone: str) -> bool:
         """Validate phone number format."""
-        # Hungarian phone number format
-        phone_pattern = r'^(\+36|06)[0-9]{8,9}$'
+        # Hungarian phone number format - must be exactly 11 digits total
+        phone_pattern = r'^(\+36[0-9]{9}|06[0-9]{9})$'
         return bool(re.match(phone_pattern, phone))
     
     @staticmethod

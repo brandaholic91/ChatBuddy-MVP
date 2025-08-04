@@ -1,38 +1,63 @@
 """
-Audit Logging System - Chatbuddy MVP.
+Audit Logging System for ChatBuddy MVP.
 
-Ez a modul implementálja a comprehensive audit logging rendszert
-minden agent interakcióra és biztonsági eseményre.
+Ez a modul implementálja a részletes audit logging rendszert
+a ChatBuddy MVP biztonsági és GDPR megfelelőségi követelményeihez.
 """
 
 import os
 import json
 import hashlib
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Dict, Any, List, Optional, Union
 from dataclasses import dataclass, asdict
 from enum import Enum
 import logging
 import asyncio
-from contextlib import asynccontextmanager
 
 logger = logging.getLogger(__name__)
 
 
 class AuditEventType(Enum):
     """Audit esemény típusok."""
-    AGENT_INTERACTION = "agent_interaction"
-    SECURITY_EVENT = "security_event"
+    # Security events
+    SECURITY_LOGIN = "security_login"
+    SECURITY_LOGOUT = "security_logout"
+    SECURITY_FAILED_LOGIN = "security_failed_login"
+    SECURITY_PASSWORD_CHANGE = "security_password_change"
+    SECURITY_ACCOUNT_LOCKED = "security_account_locked"
+    SECURITY_IP_BLOCKED = "security_ip_blocked"
+    SECURITY_THREAT_DETECTED = "security_threat_detected"
+    
+    # Data access events
     DATA_ACCESS = "data_access"
-    AUTHENTICATION = "authentication"
-    AUTHORIZATION = "authorization"
-    GDPR_EVENT = "gdpr_event"
-    SYSTEM_EVENT = "system_event"
-    ERROR_EVENT = "error_event"
+    DATA_CREATE = "data_create"
+    DATA_UPDATE = "data_update"
+    DATA_DELETE = "data_delete"
+    DATA_EXPORT = "data_export"
+    
+    # GDPR events
+    GDPR_CONSENT_GRANTED = "gdpr_consent_granted"
+    GDPR_CONSENT_REVOKED = "gdpr_consent_revoked"
+    GDPR_DATA_DELETION = "gdpr_data_deletion"
+    GDPR_DATA_EXPORT = "gdpr_data_export"
+    GDPR_DATA_ACCESS_REQUEST = "gdpr_data_access_request"
+    
+    # Agent events
+    AGENT_QUERY = "agent_query"
+    AGENT_RESPONSE = "agent_response"
+    AGENT_ERROR = "agent_error"
+    AGENT_TOOL_USAGE = "agent_tool_usage"
+    
+    # System events
+    SYSTEM_STARTUP = "system_startup"
+    SYSTEM_SHUTDOWN = "system_shutdown"
+    SYSTEM_ERROR = "system_error"
+    SYSTEM_CONFIG_CHANGE = "system_config_change"
 
 
-class SecuritySeverity(Enum):
-    """Biztonsági események súlyossága."""
+class AuditSeverity(Enum):
+    """Audit súlyossági szintek."""
     LOW = "low"
     MEDIUM = "medium"
     HIGH = "high"
@@ -47,159 +72,169 @@ class AuditEvent:
     timestamp: datetime
     user_id: Optional[str]
     session_id: Optional[str]
-    agent_type: Optional[str]
-    severity: SecuritySeverity
-    source_ip: Optional[str]
+    ip_address: Optional[str]
     user_agent: Optional[str]
-    event_data: Dict[str, Any]
-    metadata: Dict[str, Any]
-
-
-@dataclass
-class SecurityEvent:
-    """Biztonsági esemény rekord."""
-    event_id: str
-    event_type: str
-    severity: SecuritySeverity
-    timestamp: datetime
-    user_id: Optional[str]
-    source_ip: Optional[str]
-    description: str
+    severity: AuditSeverity
     details: Dict[str, Any]
-    mitigated: bool = False
-    mitigation_notes: Optional[str] = None
+    metadata: Dict[str, Any]
+    source: str = "chatbuddy_mvp"
+    version: str = "1.0.0"
 
 
-class SecurityAuditLogger:
-    """Biztonsági audit logger."""
+class AuditLogger:
+    """Audit logging rendszer."""
     
-    def __init__(self, supabase_client=None, logfire_client=None):
+    def __init__(self, supabase_client=None, log_file_path: Optional[str] = None):
         self.supabase = supabase_client
-        self.logfire = logfire_client
-        self.audit_queue = asyncio.Queue()
-        self.running = False
+        self.log_file_path = log_file_path or os.getenv("AUDIT_LOG_FILE", "audit.log")
+        self.logger = self._setup_logger()
+        self._event_queue = asyncio.Queue()
+        self._processing_task = None
+    
+    def _setup_logger(self) -> logging.Logger:
+        """Logger beállítása."""
+        audit_logger = logging.getLogger("audit")
+        audit_logger.setLevel(logging.INFO)
         
-    async def start(self):
-        """Audit logger indítása."""
-        if not self.running:
-            self.running = True
-            asyncio.create_task(self._process_audit_queue())
-            logger.info("Security audit logger started")
+        # File handler
+        file_handler = logging.FileHandler(self.log_file_path)
+        file_handler.setLevel(logging.INFO)
+        
+        # Console handler
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(logging.WARNING)
+        
+        # Formatter
+        formatter = logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+        )
+        file_handler.setFormatter(formatter)
+        console_handler.setFormatter(formatter)
+        
+        audit_logger.addHandler(file_handler)
+        audit_logger.addHandler(console_handler)
+        
+        return audit_logger
     
-    async def stop(self):
-        """Audit logger leállítása."""
-        self.running = False
-        # Wait for queue to be processed
-        while not self.audit_queue.empty():
-            await asyncio.sleep(0.1)
-        logger.info("Security audit logger stopped")
+    def _generate_event_id(self, event_type: AuditEventType, user_id: Optional[str] = None) -> str:
+        """Egyedi esemény azonosító generálása."""
+        timestamp = datetime.now(timezone.utc).isoformat()
+        base_string = f"{event_type.value}_{timestamp}_{user_id or 'anonymous'}"
+        return hashlib.md5(base_string.encode()).hexdigest()
     
-    async def _process_audit_queue(self):
-        """Audit queue feldolgozása."""
-        while self.running:
-            try:
-                event = await asyncio.wait_for(self.audit_queue.get(), timeout=1.0)
-                await self._log_event(event)
-                self.audit_queue.task_done()
-            except asyncio.TimeoutError:
-                continue
-            except Exception as e:
-                logger.error(f"Error processing audit queue: {e}")
-    
-    async def log_agent_interaction(
+    async def log_event(
         self,
-        agent_type: str,
-        user_id: str,
-        session_id: str,
-        query: str,
-        response: str,
-        metadata: Dict[str, Any] = None
-    ):
+        event_type: AuditEventType,
+        user_id: Optional[str] = None,
+        session_id: Optional[str] = None,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None,
+        severity: AuditSeverity = AuditSeverity.MEDIUM,
+        details: Optional[Dict[str, Any]] = None,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> str:
         """
-        Agent interakció naplózása.
+        Audit esemény naplózása.
         
         Args:
-            agent_type: Agent típusa
+            event_type: Esemény típusa
             user_id: Felhasználó azonosító
             session_id: Session azonosító
-            query: Felhasználói kérés
-            response: Agent válasz
-            metadata: További metaadatok
+            ip_address: IP cím
+            user_agent: User agent
+            severity: Súlyosság
+            details: Részletek
+            metadata: Metaadatok
+            
+        Returns:
+            Esemény azonosító
         """
-        event = AuditEvent(
-            event_id=self._generate_event_id(),
-            event_type=AuditEventType.AGENT_INTERACTION,
-            timestamp=datetime.now(timezone.utc),
-            user_id=user_id,
-            session_id=session_id,
-            agent_type=agent_type,
-            severity=SecuritySeverity.LOW,
-            source_ip=metadata.get("source_ip") if metadata else None,
-            user_agent=metadata.get("user_agent") if metadata else None,
-            event_data={
-                "query": self._sanitize_input(query),
-                "response": self._sanitize_output(response),
-                "query_length": len(query),
-                "response_length": len(response),
-                "processing_time": metadata.get("processing_time") if metadata else None
-            },
-            metadata=metadata or {}
-        )
-        
-        await self.audit_queue.put(event)
+        try:
+            event_id = self._generate_event_id(event_type, user_id)
+            
+            audit_event = AuditEvent(
+                event_id=event_id,
+                event_type=event_type,
+                timestamp=datetime.now(timezone.utc),
+                user_id=user_id,
+                session_id=session_id,
+                ip_address=ip_address,
+                user_agent=user_agent,
+                severity=severity,
+                details=details or {},
+                metadata=metadata or {}
+            )
+            
+            # Add to queue for async processing
+            await self._event_queue.put(audit_event)
+            
+            # Immediate console log for critical events
+            if severity in [AuditSeverity.HIGH, AuditSeverity.CRITICAL]:
+                self.logger.critical(
+                    f"CRITICAL AUDIT EVENT: {event_type.value} - User: {user_id} - Details: {details}"
+                )
+            
+            return event_id
+            
+        except Exception as e:
+            logger.error(f"Audit logging error: {e}")
+            return "error"
     
     async def log_security_event(
         self,
         event_type: str,
-        severity: SecuritySeverity,
-        user_id: Optional[str],
-        description: str,
-        details: Dict[str, Any] = None,
-        source_ip: Optional[str] = None
-    ):
+        user_id: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None
+    ) -> str:
         """
         Biztonsági esemény naplózása.
         
         Args:
             event_type: Esemény típusa
-            severity: Súlyosság
             user_id: Felhasználó azonosító
-            description: Leírás
             details: Részletek
-            source_ip: Forrás IP
+            ip_address: IP cím
+            user_agent: User agent
+            
+        Returns:
+            Esemény azonosító
         """
-        event = AuditEvent(
-            event_id=self._generate_event_id(),
-            event_type=AuditEventType.SECURITY_EVENT,
-            timestamp=datetime.now(timezone.utc),
+        # Map string event types to AuditEventType
+        event_type_mapping = {
+            "login": AuditEventType.SECURITY_LOGIN,
+            "logout": AuditEventType.SECURITY_LOGOUT,
+            "failed_login": AuditEventType.SECURITY_FAILED_LOGIN,
+            "password_change": AuditEventType.SECURITY_PASSWORD_CHANGE,
+            "account_locked": AuditEventType.SECURITY_ACCOUNT_LOCKED,
+            "ip_blocked": AuditEventType.SECURITY_IP_BLOCKED,
+            "threat_detected": AuditEventType.SECURITY_THREAT_DETECTED,
+            "high_threat_detected": AuditEventType.SECURITY_THREAT_DETECTED
+        }
+        
+        audit_event_type = event_type_mapping.get(event_type, AuditEventType.SECURITY_THREAT_DETECTED)
+        severity = AuditSeverity.HIGH if "threat" in event_type else AuditSeverity.MEDIUM
+        
+        return await self.log_event(
+            event_type=audit_event_type,
             user_id=user_id,
-            session_id=None,
-            agent_type=None,
+            ip_address=ip_address,
+            user_agent=user_agent,
             severity=severity,
-            source_ip=source_ip,
-            user_agent=None,
-            event_data={
-                "security_event_type": event_type,
-                "description": description,
-                "details": self._sanitize_data(details or {})
-            },
-            metadata={}
+            details=details,
+            metadata={"security_event": True}
         )
-        
-        await self.audit_queue.put(event)
-        
-        # Critical events need immediate attention
-        if severity == SecuritySeverity.CRITICAL:
-            await self._handle_critical_event(event)
     
     async def log_data_access(
         self,
         user_id: str,
         data_type: str,
         operation: str,
-        success: bool,
-        details: Dict[str, Any] = None
-    ):
+        success: bool = True,
+        details: Optional[Dict[str, Any]] = None,
+        session_id: Optional[str] = None
+    ) -> str:
         """
         Adathozzáférés naplózása.
         
@@ -209,116 +244,34 @@ class SecurityAuditLogger:
             operation: Művelet
             success: Sikeres volt-e
             details: Részletek
+            session_id: Session azonosító
+            
+        Returns:
+            Esemény azonosító
         """
-        event = AuditEvent(
-            event_id=self._generate_event_id(),
+        severity = AuditSeverity.LOW if success else AuditSeverity.MEDIUM
+        
+        return await self.log_event(
             event_type=AuditEventType.DATA_ACCESS,
-            timestamp=datetime.now(timezone.utc),
             user_id=user_id,
-            session_id=None,
-            agent_type=None,
-            severity=SecuritySeverity.MEDIUM if not success else SecuritySeverity.LOW,
-            source_ip=None,
-            user_agent=None,
-            event_data={
+            session_id=session_id,
+            severity=severity,
+            details={
                 "data_type": data_type,
                 "operation": operation,
                 "success": success,
-                "details": self._sanitize_data(details or {})
+                **(details or {})
             },
-            metadata={}
+            metadata={"data_access": True}
         )
-        
-        await self.audit_queue.put(event)
-    
-    async def log_authentication(
-        self,
-        user_id: str,
-        success: bool,
-        method: str,
-        source_ip: str,
-        details: Dict[str, Any] = None
-    ):
-        """
-        Hitelesítés naplózása.
-        
-        Args:
-            user_id: Felhasználó azonosító
-            success: Sikeres volt-e
-            method: Hitelesítési módszer
-            source_ip: Forrás IP
-            details: Részletek
-        """
-        event = AuditEvent(
-            event_id=self._generate_event_id(),
-            event_type=AuditEventType.AUTHENTICATION,
-            timestamp=datetime.now(timezone.utc),
-            user_id=user_id,
-            session_id=None,
-            agent_type=None,
-            severity=SecuritySeverity.HIGH if not success else SecuritySeverity.LOW,
-            source_ip=source_ip,
-            user_agent=details.get("user_agent") if details else None,
-            event_data={
-                "success": success,
-                "method": method,
-                "details": self._sanitize_data(details or {})
-            },
-            metadata={}
-        )
-        
-        await self.audit_queue.put(event)
-        
-        # Failed authentication attempts need attention
-        if not success:
-            await self._handle_failed_auth(event)
-    
-    async def log_authorization(
-        self,
-        user_id: str,
-        resource: str,
-        action: str,
-        granted: bool,
-        details: Dict[str, Any] = None
-    ):
-        """
-        Jogosultság naplózása.
-        
-        Args:
-            user_id: Felhasználó azonosító
-            resource: Erőforrás
-            action: Művelet
-            granted: Engedélyezett volt-e
-            details: Részletek
-        """
-        event = AuditEvent(
-            event_id=self._generate_event_id(),
-            event_type=AuditEventType.AUTHORIZATION,
-            timestamp=datetime.now(timezone.utc),
-            user_id=user_id,
-            session_id=None,
-            agent_type=None,
-            severity=SecuritySeverity.HIGH if not granted else SecuritySeverity.LOW,
-            source_ip=None,
-            user_agent=None,
-            event_data={
-                "resource": resource,
-                "action": action,
-                "granted": granted,
-                "details": self._sanitize_data(details or {})
-            },
-            metadata={}
-        )
-        
-        await self.audit_queue.put(event)
     
     async def log_gdpr_event(
         self,
         event_type: str,
         user_id: str,
         data_type: str,
-        details: Dict[str, Any] = None
-    ):
+        details: Optional[Dict[str, Any]] = None
+    ) -> str:
         """
         GDPR esemény naplózása.
         
@@ -327,411 +280,346 @@ class SecurityAuditLogger:
             user_id: Felhasználó azonosító
             data_type: Adattípus
             details: Részletek
+            
+        Returns:
+            Esemény azonosító
         """
-        event = AuditEvent(
-            event_id=self._generate_event_id(),
-            event_type=AuditEventType.GDPR_EVENT,
-            timestamp=datetime.now(timezone.utc),
-            user_id=user_id,
-            session_id=None,
-            agent_type=None,
-            severity=SecuritySeverity.MEDIUM,
-            source_ip=None,
-            user_agent=None,
-            event_data={
-                "gdpr_event_type": event_type,
-                "data_type": data_type,
-                "details": self._sanitize_data(details or {})
-            },
-            metadata={}
-        )
+        # Map GDPR event types
+        event_type_mapping = {
+            "consent_granted": AuditEventType.GDPR_CONSENT_GRANTED,
+            "consent_revoked": AuditEventType.GDPR_CONSENT_REVOKED,
+            "data_deletion": AuditEventType.GDPR_DATA_DELETION,
+            "data_export": AuditEventType.GDPR_DATA_EXPORT,
+            "data_access_request": AuditEventType.GDPR_DATA_ACCESS_REQUEST
+        }
         
-        await self.audit_queue.put(event)
+        audit_event_type = event_type_mapping.get(event_type, AuditEventType.GDPR_CONSENT_GRANTED)
+        
+        return await self.log_event(
+            event_type=audit_event_type,
+            user_id=user_id,
+            severity=AuditSeverity.MEDIUM,
+            details={
+                "data_type": data_type,
+                **(details or {})
+            },
+            metadata={"gdpr_event": True}
+        )
     
-    async def log_error(
+    async def log_agent_event(
         self,
-        error_type: str,
-        error_message: str,
+        event_type: str,
         user_id: Optional[str] = None,
-        session_id: Optional[str] = None,
-        agent_type: Optional[str] = None,
-        details: Dict[str, Any] = None
-    ):
+        agent_name: Optional[str] = None,
+        details: Optional[Dict[str, Any]] = None,
+        session_id: Optional[str] = None
+    ) -> str:
         """
-        Hiba esemény naplózása.
+        Agent esemény naplózása.
         
         Args:
-            error_type: Hiba típusa
-            error_message: Hiba üzenet
+            event_type: Esemény típusa
             user_id: Felhasználó azonosító
-            session_id: Session azonosító
-            agent_type: Agent típusa
+            agent_name: Agent neve
             details: Részletek
+            session_id: Session azonosító
+            
+        Returns:
+            Esemény azonosító
         """
-        event = AuditEvent(
-            event_id=self._generate_event_id(),
-            event_type=AuditEventType.ERROR_EVENT,
-            timestamp=datetime.now(timezone.utc),
+        # Map agent event types
+        event_type_mapping = {
+            "query": AuditEventType.AGENT_QUERY,
+            "response": AuditEventType.AGENT_RESPONSE,
+            "error": AuditEventType.AGENT_ERROR,
+            "tool_usage": AuditEventType.AGENT_TOOL_USAGE
+        }
+        
+        audit_event_type = event_type_mapping.get(event_type, AuditEventType.AGENT_QUERY)
+        severity = AuditSeverity.LOW if event_type != "error" else AuditSeverity.MEDIUM
+        
+        return await self.log_event(
+            event_type=audit_event_type,
             user_id=user_id,
             session_id=session_id,
-            agent_type=agent_type,
-            severity=SecuritySeverity.HIGH,
-            source_ip=None,
-            user_agent=None,
-            event_data={
-                "error_type": error_type,
-                "error_message": self._sanitize_input(error_message),
-                "details": self._sanitize_data(details or {})
+            severity=severity,
+            details={
+                "agent_name": agent_name,
+                **(details or {})
             },
-            metadata={}
+            metadata={"agent_event": True}
         )
+    
+    async def _process_audit_queue(self):
+        """Audit események feldolgozása a queue-ból."""
+        while True:
+            try:
+                # Get event from queue
+                event = await self._event_queue.get()
+                
+                # Log to file
+                self.logger.info(f"AUDIT: {json.dumps(asdict(event), default=str)}")
+                
+                # Store in database if available
+                if self.supabase:
+                    try:
+                        await self.supabase.table('audit_logs').insert(
+                            asdict(event)
+                        ).execute()
+                    except Exception as e:
+                        logger.error(f"Database audit logging error: {e}")
+                
+                # Mark as done
+                self._event_queue.task_done()
+                
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Audit queue processing error: {e}")
+    
+    async def start_processing(self):
+        """Audit feldolgozás indítása."""
+        if self._processing_task is None:
+            self._processing_task = asyncio.create_task(self._process_audit_queue())
+    
+    async def stop_processing(self):
+        """Audit feldolgozás leállítása."""
+        if self._processing_task:
+            self._processing_task.cancel()
+            try:
+                await self._processing_task
+            except asyncio.CancelledError:
+                pass
+            self._processing_task = None
+    
+    async def get_audit_events(
+        self,
+        user_id: Optional[str] = None,
+        event_type: Optional[AuditEventType] = None,
+        start_date: Optional[datetime] = None,
+        end_date: Optional[datetime] = None,
+        limit: int = 100
+    ) -> List[Dict[str, Any]]:
+        """
+        Audit események lekérése.
         
-        await self.audit_queue.put(event)
-    
-    async def _log_event(self, event: AuditEvent):
-        """Esemény naplózása minden célrendszerbe."""
+        Args:
+            user_id: Felhasználó azonosító
+            event_type: Esemény típusa
+            start_date: Kezdő dátum
+            end_date: Záró dátum
+            limit: Eredmények száma
+            
+        Returns:
+            Audit események listája
+        """
         try:
-            # Log to Supabase
             if self.supabase:
-                await self._log_to_supabase(event)
+                query = self.supabase.table('audit_logs').select('*')
+                
+                if user_id:
+                    query = query.eq('user_id', user_id)
+                
+                if event_type:
+                    query = query.eq('event_type', event_type.value)
+                
+                if start_date:
+                    query = query.gte('timestamp', start_date.isoformat())
+                
+                if end_date:
+                    query = query.lte('timestamp', end_date.isoformat())
+                
+                query = query.order('timestamp', desc=True).limit(limit)
+                
+                response = await query.execute()
+                return response.data or []
             
-            # Log to Logfire
-            if self.logfire:
-                await self._log_to_logfire(event)
-            
-            # Console log for development
-            if os.getenv("ENVIRONMENT") == "development":
-                self._log_to_console(event)
-            
-            # File log for backup
-            await self._log_to_file(event)
-            
-        except Exception as e:
-            logger.error(f"Error logging audit event: {e}")
-    
-    async def _log_to_supabase(self, event: AuditEvent):
-        """Esemény naplózása Supabase-ba."""
-        try:
-            event_data = asdict(event)
-            event_data["timestamp"] = event.timestamp.isoformat()
-            event_data["event_type"] = event.event_type.value
-            event_data["severity"] = event.severity.value
-            
-            await self.supabase.table("audit_logs").insert(event_data).execute()
+            return []
             
         except Exception as e:
-            logger.error(f"Error logging to Supabase: {e}")
+            logger.error(f"Audit events retrieval error: {e}")
+            return []
     
-    async def _log_to_logfire(self, event: AuditEvent):
-        """Esemény naplózása Logfire-be."""
+    async def cleanup_old_events(self, days: int = 90) -> int:
+        """
+        Régi audit események törlése.
+        
+        Args:
+            days: Hány napnál régebbi eseményeket töröljünk
+            
+        Returns:
+            Törölt események száma
+        """
         try:
-            if self.logfire:
-                self.logfire.info(
-                    f"Audit Event: {event.event_type.value}",
-                    event_id=event.event_id,
-                    user_id=event.user_id,
-                    session_id=event.session_id,
-                    agent_type=event.agent_type,
-                    severity=event.severity.value,
-                    source_ip=event.source_ip,
-                    event_data=event.event_data,
-                    metadata=event.metadata
+            cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
+            
+            if self.supabase:
+                response = await self.supabase.table('audit_logs').delete().lt(
+                    'timestamp', cutoff_date.isoformat()
+                ).execute()
+                
+                deleted_count = len(response.data) if response.data else 0
+                
+                # Log cleanup
+                await self.log_event(
+                    event_type=AuditEventType.SYSTEM_CONFIG_CHANGE,
+                    user_id="system",
+                    severity=AuditSeverity.LOW,
+                    details={
+                        "action": "audit_cleanup",
+                        "deleted_count": deleted_count,
+                        "cutoff_date": cutoff_date.isoformat()
+                    }
                 )
                 
-        except Exception as e:
-            logger.error(f"Error logging to Logfire: {e}")
-    
-    def _log_to_console(self, event: AuditEvent):
-        """Esemény naplózása konzolra (development)."""
-        log_level = {
-            SecuritySeverity.LOW: logging.INFO,
-            SecuritySeverity.MEDIUM: logging.WARNING,
-            SecuritySeverity.HIGH: logging.ERROR,
-            SecuritySeverity.CRITICAL: logging.CRITICAL
-        }.get(event.severity, logging.INFO)
-        
-        logger.log(
-            log_level,
-            f"AUDIT: {event.event_type.value} - User: {event.user_id} - "
-            f"Severity: {event.severity.value} - {event.event_data}"
-        )
-    
-    async def _log_to_file(self, event: AuditEvent):
-        """Esemény naplózása fájlba (backup)."""
-        try:
-            log_file = os.getenv("AUDIT_LOG_FILE", "audit.log")
-            event_data = asdict(event)
-            event_data["timestamp"] = event.timestamp.isoformat()
-            event_data["event_type"] = event.event_type.value
-            event_data["severity"] = event.severity.value
+                return deleted_count
             
-            with open(log_file, "a", encoding="utf-8") as f:
-                f.write(json.dumps(event_data, ensure_ascii=False) + "\n")
-                
-        except Exception as e:
-            logger.error(f"Error logging to file: {e}")
-    
-    async def _handle_critical_event(self, event: AuditEvent):
-        """Kritikus esemény kezelése."""
-        try:
-            # Send alert to security team
-            await self._send_security_alert(event)
-            
-            # Log to separate critical events log
-            await self._log_critical_event(event)
+            return 0
             
         except Exception as e:
-            logger.error(f"Error handling critical event: {e}")
-    
-    async def _handle_failed_auth(self, event: AuditEvent):
-        """Sikertelen hitelesítés kezelése."""
-        try:
-            # Check for potential brute force attack
-            if await self._is_potential_brute_force(event.user_id, event.source_ip):
-                await self._handle_brute_force_attempt(event)
-                
-        except Exception as e:
-            logger.error(f"Error handling failed auth: {e}")
-    
-    async def _is_potential_brute_force(self, user_id: str, source_ip: str) -> bool:
-        """Brute force támadás felismerése."""
-        # TODO: Implement brute force detection logic
-        # This should check recent failed attempts from the same IP/user
-        return False
-    
-    async def _handle_brute_force_attempt(self, event: AuditEvent):
-        """Brute force támadás kezelése."""
-        try:
-            # Block IP temporarily
-            await self._block_ip(event.source_ip)
-            
-            # Log security event
-            await self.log_security_event(
-                "brute_force_detected",
-                SecuritySeverity.CRITICAL,
-                event.user_id,
-                f"Brute force attack detected from IP {event.source_ip}",
-                {"blocked_ip": event.source_ip}
-            )
-            
-        except Exception as e:
-            logger.error(f"Error handling brute force attempt: {e}")
-    
-    async def _block_ip(self, ip_address: str):
-        """IP cím blokkolása."""
-        # TODO: Implement IP blocking logic
-        # This should add the IP to a blocklist
-        pass
-    
-    async def _send_security_alert(self, event: AuditEvent):
-        """Biztonsági riasztás küldése."""
-        # TODO: Implement security alert system
-        # This should send alerts to security team via email/SMS/Slack
-        pass
-    
-    async def _log_critical_event(self, event: AuditEvent):
-        """Kritikus esemény külön naplózása."""
-        try:
-            critical_log_file = os.getenv("CRITICAL_AUDIT_LOG_FILE", "critical_audit.log")
-            event_data = asdict(event)
-            event_data["timestamp"] = event.timestamp.isoformat()
-            event_data["event_type"] = event.event_type.value
-            event_data["severity"] = event.severity.value
-            
-            with open(critical_log_file, "a", encoding="utf-8") as f:
-                f.write(json.dumps(event_data, ensure_ascii=False) + "\n")
-                
-        except Exception as e:
-            logger.error(f"Error logging critical event: {e}")
-    
-    def _generate_event_id(self) -> str:
-        """Egyedi esemény azonosító generálása."""
-        return f"audit_{hashlib.md5(f'{datetime.now()}_{os.getpid()}'.encode()).hexdigest()}"
-    
-    def _sanitize_input(self, input_data: str) -> str:
-        """Bemeneti adatok sanitizálása."""
-        if not input_data:
-            return ""
-        
-        import re
-        
-        # Remove XSS patterns
-        xss_patterns = [
-            r'<script[^>]*>.*?</script>',
-            r'<script[^>]*>',
-            r'javascript:',
-            r'on\w+\s*=',
-            r'<iframe[^>]*>',
-            r'<object[^>]*>',
-            r'<embed[^>]*>'
-        ]
-        
-        sanitized = input_data
-        for pattern in xss_patterns:
-            sanitized = re.sub(pattern, '***XSS_BLOCKED***', sanitized, flags=re.IGNORECASE | re.DOTALL)
-        
-        # Remove SQL injection patterns
-        sql_patterns = [
-            r'DROP\s+TABLE',
-            r'DELETE\s+FROM',
-            r'INSERT\s+INTO',
-            r'UPDATE\s+SET',
-            r'UNION\s+SELECT',
-            r'OR\s+1\s*=\s*1',
-            r'OR\s+\'1\'\s*=\s*\'1\'',
-            r'--\s*$',
-            r'/\*.*?\*/',
-            r';\s*$'
-        ]
-        
-        for pattern in sql_patterns:
-            sanitized = re.sub(pattern, '***SQL_BLOCKED***', sanitized, flags=re.IGNORECASE | re.DOTALL)
-        
-        # Remove potentially sensitive information
-        sensitive_patterns = [
-            r'password["\']?\s*[:=]\s*["\']?[^"\']+["\']?',
-            r'token["\']?\s*[:=]\s*["\']?[^"\']+["\']?',
-            r'key["\']?\s*[:=]\s*["\']?[^"\']+["\']?',
-            r'secret["\']?\s*[:=]\s*["\']?[^"\']+["\']?',
-            r'secret\w+',  # Match words starting with "secret"
-            r'password\w+',  # Match words starting with "password"
-            r'token\w+',  # Match words starting with "token"
-            r'key\w+'  # Match words starting with "key"
-        ]
-        
-        for pattern in sensitive_patterns:
-            sanitized = re.sub(pattern, '***MASKED***', sanitized, flags=re.IGNORECASE)
-        
-        # Limit length
-        if len(sanitized) > 1000:
-            sanitized = sanitized[:997] + "..."
-        
-        return sanitized
-    
-    def _sanitize_output(self, output_data: str) -> str:
-        """Kimeneti adatok sanitizálása."""
-        if not output_data:
-            return ""
-        
-        import re
-        
-        # Remove XSS patterns
-        xss_patterns = [
-            r'<script[^>]*>.*?</script>',
-            r'<script[^>]*>',
-            r'javascript:',
-            r'on\w+\s*=',
-            r'<iframe[^>]*>',
-            r'<object[^>]*>',
-            r'<embed[^>]*>'
-        ]
-        
-        sanitized = output_data
-        for pattern in xss_patterns:
-            sanitized = re.sub(pattern, '***XSS_BLOCKED***', sanitized, flags=re.IGNORECASE | re.DOTALL)
-        
-        # Remove potentially sensitive information from responses
-        sensitive_patterns = [
-            r'jelszó["\']?\s*[:=]\s*["\']?[^"\']+["\']?',
-            r'kártyaszám["\']?\s*[:=]\s*["\']?[^"\']+["\']?',
-            r'cvv["\']?\s*[:=]\s*["\']?[^"\']+["\']?',
-            r'pin["\']?\s*[:=]\s*["\']?[^"\']+["\']?',
-            r'jelszava["\']?\s*[:=]\s*["\']?[^"\']+["\']?',
-            r'secret\w+',  # Match words starting with "secret"
-            r'password\w+',  # Match words starting with "password"
-            r'token\w+',  # Match words starting with "token"
-            r'key\w+',  # Match words starting with "key"
-            r'secret\d+',  # Match "secret" followed by numbers
-            r'password\d+',  # Match "password" followed by numbers
-            r'token\d+',  # Match "token" followed by numbers
-            r'key\d+'  # Match "key" followed by numbers
-        ]
-        
-        for pattern in sensitive_patterns:
-            sanitized = re.sub(pattern, '***MASKED***', sanitized, flags=re.IGNORECASE)
-        
-        # Limit length
-        if len(sanitized) > 1000:
-            sanitized = sanitized[:997] + "..."
-        
-        return sanitized
-    
-    def _sanitize_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """Adatok sanitizálása."""
-        if not data:
-            return {}
-        
-        sanitized = {}
-        sensitive_keys = ["password", "token", "key", "secret", "jelszó", "kártyaszám", "cvv", "pin"]
-        
-        for key, value in data.items():
-            if any(sensitive in key.lower() for sensitive in sensitive_keys):
-                sanitized[key] = "***MASKED***"
-            elif isinstance(value, str):
-                sanitized[key] = self._sanitize_input(value)
-            elif isinstance(value, dict):
-                sanitized[key] = self._sanitize_data(value)
-            else:
-                sanitized[key] = value
-        
-        return sanitized
+            logger.error(f"Audit cleanup error: {e}")
+            return 0
 
 
 # Singleton instance
-_security_audit_logger: Optional[SecurityAuditLogger] = None
+_audit_logger: Optional[AuditLogger] = None
 
 
-def get_security_audit_logger() -> SecurityAuditLogger:
+def get_audit_logger(supabase_client=None) -> AuditLogger:
     """
-    Security audit logger singleton instance.
-    
-    Returns:
-        SecurityAuditLogger instance
-    """
-    global _security_audit_logger
-    if _security_audit_logger is None:
-        _security_audit_logger = SecurityAuditLogger()
-    return _security_audit_logger
-
-
-@asynccontextmanager
-async def audit_context(
-    agent_type: str,
-    user_id: str,
-    session_id: str,
-    query: str,
-    metadata: Dict[str, Any] = None
-):
-    """
-    Audit context manager agent interakciókhoz.
+    Audit logger singleton instance.
     
     Args:
-        agent_type: Agent típusa
-        user_id: Felhasználó azonosító
-        session_id: Session azonosító
-        query: Felhasználói kérés
-        metadata: Metaadatok
+        supabase_client: Supabase kliens
+        
+    Returns:
+        AuditLogger instance
     """
-    start_time = datetime.now(timezone.utc)
-    audit_logger = get_security_audit_logger()
+    global _audit_logger
+    if _audit_logger is None:
+        _audit_logger = AuditLogger(supabase_client=supabase_client)
+    return _audit_logger
+
+
+async def setup_audit_logging(supabase_client=None) -> AuditLogger:
+    """
+    Audit logging beállítása.
     
-    try:
-        yield
-    finally:
-        end_time = datetime.now(timezone.utc)
-        processing_time = (end_time - start_time).total_seconds()
+    Args:
+        supabase_client: Supabase kliens
         
-        # Add processing time to metadata
-        if metadata is None:
-            metadata = {}
-        metadata["processing_time"] = processing_time
-        
-        # Log the interaction
-        await audit_logger.log_agent_interaction(
-            agent_type=agent_type,
-            user_id=user_id,
-            session_id=session_id,
-            query=query,
-            response="[Response captured in context]",
-            metadata=metadata
-        ) 
+    Returns:
+        AuditLogger instance
+    """
+    audit_logger = get_audit_logger(supabase_client)
+    await audit_logger.start_processing()
+    return audit_logger
+
+
+async def shutdown_audit_logging():
+    """Audit logging leállítása."""
+    global _audit_logger
+    if _audit_logger:
+        await _audit_logger.stop_processing()
+
+
+# Utility functions for common audit scenarios
+async def log_user_login(user_id: str, ip_address: str, user_agent: str, success: bool = True):
+    """Felhasználói bejelentkezés naplózása."""
+    audit_logger = get_audit_logger()
+    
+    event_type = "login" if success else "failed_login"
+    severity = AuditSeverity.MEDIUM if success else AuditSeverity.HIGH
+    
+    await audit_logger.log_security_event(
+        event_type=event_type,
+        user_id=user_id,
+        ip_address=ip_address,
+        user_agent=user_agent,
+        details={"success": success}
+    )
+
+
+async def log_agent_interaction(
+    user_id: str,
+    agent_name: str,
+    query: str,
+    response: str,
+    session_id: Optional[str] = None,
+    success: bool = True
+):
+    """Agent interakció naplózása."""
+    audit_logger = get_audit_logger()
+    
+    # Log query
+    await audit_logger.log_agent_event(
+        event_type="query",
+        user_id=user_id,
+        agent_name=agent_name,
+        session_id=session_id,
+        details={
+            "query": query[:500],  # Limit length for storage
+            "success": success
+        }
+    )
+    
+    # Log response
+    await audit_logger.log_agent_event(
+        event_type="response",
+        user_id=user_id,
+        agent_name=agent_name,
+        session_id=session_id,
+        details={
+            "response_length": len(response),
+            "success": success
+        }
+    )
+
+
+async def log_data_processing(
+    user_id: str,
+    data_type: str,
+    operation: str,
+    data_size: Optional[int] = None,
+    session_id: Optional[str] = None
+):
+    """Adatfeldolgozás naplózása."""
+    audit_logger = get_audit_logger()
+    
+    await audit_logger.log_data_access(
+        user_id=user_id,
+        data_type=data_type,
+        operation=operation,
+        session_id=session_id,
+        details={
+            "data_size": data_size,
+            "processing_time": None  # Could be added later
+        }
+    )
+
+
+async def log_system_event(
+    event_type: str,
+    details: Optional[Dict[str, Any]] = None,
+    severity: AuditSeverity = AuditSeverity.MEDIUM
+):
+    """Rendszer esemény naplózása."""
+    audit_logger = get_audit_logger()
+    
+    # Map system event types
+    event_type_mapping = {
+        "startup": AuditEventType.SYSTEM_STARTUP,
+        "shutdown": AuditEventType.SYSTEM_SHUTDOWN,
+        "error": AuditEventType.SYSTEM_ERROR,
+        "config_change": AuditEventType.SYSTEM_CONFIG_CHANGE
+    }
+    
+    audit_event_type = event_type_mapping.get(event_type, AuditEventType.SYSTEM_ERROR)
+    
+    await audit_logger.log_event(
+        event_type=audit_event_type,
+        user_id="system",
+        severity=severity,
+        details=details or {},
+        metadata={"system_event": True}
+    ) 

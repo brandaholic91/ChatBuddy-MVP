@@ -50,20 +50,16 @@ def test_config_imports():
 @pytest.mark.unit
 def test_placeholder_agents():
     """Test that agent placeholders are set correctly."""
-    from src.agents import (
-        coordinator_agent,
-        product_info_agent,
-        order_status_agent,
-        recommendations_agent,
-        marketing_agent
-    )
+    # Test that agents module can be imported
+    from src.agents import coordinator, general, marketing, order_status, product_info, recommendations
     
-    # All should be None for now (placeholders)
-    assert coordinator_agent is None
-    assert product_info_agent is None
-    assert order_status_agent is None
-    assert recommendations_agent is None
-    assert marketing_agent is None
+    # All should be importable modules
+    assert coordinator is not None
+    assert general is not None
+    assert marketing is not None
+    assert order_status is not None
+    assert product_info is not None
+    assert recommendations is not None
 
 
 @pytest.mark.unit

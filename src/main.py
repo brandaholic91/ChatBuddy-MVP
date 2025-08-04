@@ -11,10 +11,10 @@ from dotenv import load_dotenv
 
 from src.config.logging import setup_logging
 from src.config.security import setup_security_middleware, get_security_headers
-from src.workflows.coordinator import process_chat_message
+from src.workflows.coordinator import process_coordinator_message
 from src.models.chat import ChatRequest, ChatResponse
 from src.models.user import User
-from src.config.audit_logging import get_security_audit_logger, SecuritySeverity
+from src.config.audit_logging import get_audit_logger, AuditSeverity
 from src.config.gdpr_compliance import get_gdpr_compliance
 
 # Load environment variables from .env file
@@ -52,8 +52,8 @@ async def lifespan_context(app):
     print(f"📅 Started at: {datetime.now(timezone.utc).isoformat()}")
     print(f"🔧 Environment: {os.getenv('ENVIRONMENT', 'development')}")
     try:
-        audit_logger = get_security_audit_logger()
-        await audit_logger.start()
+        audit_logger = get_audit_logger()
+        await audit_logger.start_processing()
         print("✅ Security audit logger started")
         gdpr_compliance = get_gdpr_compliance()
         print("✅ GDPR compliance layer initialized")
@@ -66,8 +66,8 @@ async def lifespan_context(app):
     print("🛑 Chatbuddy MVP shutting down...")
     print(f"📅 Stopped at: {datetime.now(timezone.utc).isoformat()}")
     try:
-        audit_logger = get_security_audit_logger()
-        await audit_logger.stop()
+        audit_logger = get_audit_logger()
+        await audit_logger.stop_processing()
         print("✅ Security audit logger stopped")
     except Exception as e:
         print(f"❌ Error shutting down security systems: {e}")
@@ -75,34 +75,15 @@ async def lifespan_context(app):
 # Setup security middleware
 setup_security_middleware(app)
 
-# Initialize rate limiting middleware
-from src.config.rate_limiting import RateLimitMiddleware, get_rate_limiter
+# Initialize rate limiting (simplified for now)
+from src.config.rate_limiting import get_rate_limiter
 import asyncio
 
 async def setup_rate_limiting():
-    """Rate limiting middleware setup."""
-    rate_limiter = await get_rate_limiter()
-    rate_limit_middleware = RateLimitMiddleware(rate_limiter)
-    app.middleware("http")(rate_limit_middleware)
-
-# Setup rate limiting immediately for testing compatibility
-# This ensures middleware is available even when startup_event is not triggered
-try:
-    if "pytest" in sys.modules:
-        # For testing, create a simple rate limiter without Redis connection
-        from src.config.rate_limiting import RedisRateLimiter
-        test_rate_limiter = RedisRateLimiter()
-        test_rate_limiter.client = None  # Use in-memory fallback
-        test_rate_limit_middleware = RateLimitMiddleware(test_rate_limiter)
-        app.middleware("http")(test_rate_limit_middleware)
-    else:
-        # For production, setup will be called during startup
-        # asyncio.create_task(setup_rate_limiting())
-        pass
-except Exception as e:
-    print(f"Rate limiting setup failed: {e}")
-    # Continue without rate limiting if setup fails
-    pass
+    """Rate limiting setup."""
+    rate_limiter = get_rate_limiter()
+    print("✅ Rate limiting initialized")
+    return rate_limiter
 
 # Add security headers to all responses
 @app.middleware("http")
@@ -339,14 +320,12 @@ async def chat_endpoint(request: ChatRequest, request_obj: Request):
             )
         
         # Security audit logging
-        audit_logger = get_security_audit_logger()
+        audit_logger = get_audit_logger()
         await audit_logger.log_security_event(
             event_type="chat_request",
-            severity=SecuritySeverity.LOW,
             user_id=request.user_id or "anonymous",
-            description="Chat request received",
             details={"message_length": len(request.message)},
-            source_ip=source_ip
+            ip_address=source_ip
         )
         
         # Felhasználó objektum létrehozása (placeholder)
@@ -356,12 +335,10 @@ async def chat_endpoint(request: ChatRequest, request_obj: Request):
             user = User(id=request.user_id, email="user@example.com")  # Placeholder email
         
         # Koordinátor agent hívása biztonsági paraméterekkel
-        agent_response = await process_chat_message(
+        agent_response = await process_coordinator_message(
             message=request.message,
             user=user,
-            session_id=request.session_id,
-            source_ip=source_ip,
-            user_agent=user_agent
+            session_id=request.session_id
         )
         
         # ChatResponse létrehozása
@@ -380,14 +357,12 @@ async def chat_endpoint(request: ChatRequest, request_obj: Request):
         raise
     except Exception as e:
         # Log security event for errors
-        audit_logger = get_security_audit_logger()
+        audit_logger = get_audit_logger()
         await audit_logger.log_security_event(
             event_type="chat_error",
-            severity=SecuritySeverity.HIGH,
             user_id=request.user_id or "anonymous",
-            description=f"Chat processing error: {str(e)}",
             details={"error": str(e)},
-            source_ip=source_ip if 'source_ip' in locals() else None
+            ip_address=source_ip if 'source_ip' in locals() else None
         )
         
         raise HTTPException(

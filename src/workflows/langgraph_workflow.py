@@ -35,6 +35,9 @@ from ..agents.general.agent import (
     call_general_agent,
     GeneralDependencies
 )
+# Security imports
+from ..config.security import get_threat_detector, InputValidator
+from ..config.gdpr_compliance import get_gdpr_compliance, ConsentType, DataCategory
 
 
 def route_message(state: LangGraphState) -> Dict[str, str]:
@@ -48,6 +51,10 @@ def route_message(state: LangGraphState) -> Dict[str, str]:
         Következő node neve dict formátumban
     """
     try:
+        # Security validation before routing
+        if not _validate_security_context(state):
+            return {"next": "general_agent"}
+        
         # Get the last message
         if not state.get("messages"):
             return {"next": "general_agent"}
@@ -57,6 +64,27 @@ def route_message(state: LangGraphState) -> Dict[str, str]:
             return {"next": "general_agent"}
         
         message_content = last_message.content.lower()
+        
+        # Input sanitization
+        sanitized_content = InputValidator.sanitize_string(message_content)
+        if sanitized_content != message_content:
+            # Update the message with sanitized content
+            last_message.content = sanitized_content
+            message_content = sanitized_content.lower()
+        
+        # Threat detection
+        threat_detector = get_threat_detector()
+        threat_analysis = threat_detector.detect_threats(message_content)
+        
+        if threat_analysis["risk_level"] == "high":
+            # Log security event
+            if state.get("audit_logger"):
+                state["audit_logger"].log_security_event(
+                    "high_threat_detected",
+                    state.get("user_context", {}).get("user_id", "anonymous"),
+                    threat_analysis
+                )
+            return {"next": "general_agent"}
         
         # Keyword-based routing (prioritized order)
         if any(word in message_content for word in [
@@ -87,43 +115,106 @@ def route_message(state: LangGraphState) -> Dict[str, str]:
         return {"next": "general_agent"}
 
 
-async def call_product_agent(state: LangGraphState) -> LangGraphState:
-    """Product agent hívása LangGraph workflow-ban."""
+def _validate_security_context(state: LangGraphState) -> bool:
+    """Validálja a security context-et."""
     try:
-        # Get the last message
-        last_message = state["messages"][-1].content
+        # Check if security context exists
+        security_context = state.get("security_context")
+        if not security_context:
+            return True  # Allow if no security context (for development)
         
-        # Create dependencies
-        deps = ProductInfoDependencies(
-            supabase_client=state.get("user_context", {}).get("supabase_client"),
-            webshop_api=state.get("user_context", {}).get("webshop_api"),
-            user_context=state.get("user_context", {}),
-            security_context=state.get("security_context"),
-            audit_logger=state.get("audit_logger")
+        # Add additional security validations here
+        return True
+        
+    except Exception:
+        return False
+
+
+async def _validate_gdpr_consent(
+    state: LangGraphState,
+    consent_type: ConsentType,
+    data_category: DataCategory
+) -> bool:
+    """Validálja a GDPR hozzájárulást."""
+    try:
+        gdpr_compliance = state.get("gdpr_compliance")
+        if not gdpr_compliance:
+            return True  # Allow if no GDPR compliance (for development)
+        
+        user_id = state.get("user_context", {}).get("user_id", "anonymous")
+        
+        # Check consent
+        has_consent = await gdpr_compliance.check_user_consent(
+            user_id=user_id,
+            consent_type=consent_type,
+            data_category=data_category
         )
         
-        # Call Pydantic AI agent
-        result = await call_product_info_agent(last_message, deps)
+        return has_consent
         
-        # Update state with response
-        state = update_state_with_response(
-            state=state,
-            response_text=result.response_text,
-            agent_name="product_agent",
-            confidence=result.confidence,
-            metadata={
-                "category": result.category,
-                "product_info": result.product_info.dict() if result.product_info else None,
-                "search_results": result.search_results.dict() if result.search_results else None,
-                **result.metadata
-            }
-        )
-        
-        return state
-        
-    except Exception as e:
-        # Error handling
-        state = update_state_with_error(
+    except Exception:
+        return True  # Allow on error (fail open for development)
+
+
+    async def call_product_agent(state: LangGraphState) -> LangGraphState:
+        """Product agent hívása LangGraph workflow-ban."""
+        try:
+            # Security validation
+            if not _validate_security_context(state):
+                error_response = AIMessage(content="Biztonsági hiba: Hiányzó biztonsági kontextus.")
+                state["messages"].append(error_response)
+                return state
+            
+            # GDPR consent check
+            if not await _validate_gdpr_consent(state, ConsentType.FUNCTIONAL, DataCategory.PERSONAL):
+                error_response = AIMessage(content="Sajnálom, ehhez a funkcióhoz szükségem van a hozzájárulásodra.")
+                state["messages"].append(error_response)
+                return state
+            
+            # Get the last message
+            last_message = state["messages"][-1].content
+            
+            # Create dependencies
+            deps = ProductInfoDependencies(
+                supabase_client=state.get("user_context", {}).get("supabase_client"),
+                webshop_api=state.get("user_context", {}).get("webshop_api"),
+                user_context=state.get("user_context", {}),
+                security_context=state.get("security_context"),
+                audit_logger=state.get("audit_logger")
+            )
+            
+            # Call Pydantic AI agent
+            result = await call_product_info_agent(last_message, deps)
+            
+            # Audit logging
+            audit_logger = state.get("audit_logger")
+            if audit_logger:
+                await audit_logger.log_data_access(
+                    user_id=state.get("user_context", {}).get("user_id", "anonymous"),
+                    data_type="product_info",
+                    operation="query",
+                    success=True
+                )
+            
+            # Update state with response
+            state = update_state_with_response(
+                state=state,
+                response_text=result.response_text,
+                agent_name="product_agent",
+                confidence=result.confidence,
+                metadata={
+                    "category": result.category,
+                    "product_info": result.product_info.dict() if result.product_info else None,
+                    "search_results": result.search_results.dict() if result.search_results else None,
+                    **result.metadata
+                }
+            )
+            
+            return state
+            
+        except Exception as e:
+            # Error handling
+            state = update_state_with_error(
             state=state,
             error_message=f"Product agent hiba: {str(e)}",
             agent_name="product_agent"
@@ -134,6 +225,18 @@ async def call_product_agent(state: LangGraphState) -> LangGraphState:
 async def call_order_agent(state: LangGraphState) -> LangGraphState:
     """Order agent hívása LangGraph workflow-ban."""
     try:
+        # Security validation
+        if not _validate_security_context(state):
+            error_response = AIMessage(content="Biztonsági hiba: Hiányzó biztonsági kontextus.")
+            state["messages"].append(error_response)
+            return state
+        
+        # GDPR consent check
+        if not await _validate_gdpr_consent(state, ConsentType.FUNCTIONAL, DataCategory.PERSONAL):
+            error_response = AIMessage(content="Sajnálom, ehhez a funkcióhoz szükségem van a hozzájárulásodra.")
+            state["messages"].append(error_response)
+            return state
+        
         # Get the last message
         last_message = state["messages"][-1].content
         
@@ -148,6 +251,16 @@ async def call_order_agent(state: LangGraphState) -> LangGraphState:
         
         # Call Pydantic AI agent
         result = await call_order_status_agent(last_message, deps)
+        
+        # Audit logging
+        audit_logger = state.get("audit_logger")
+        if audit_logger:
+            await audit_logger.log_data_access(
+                user_id=state.get("user_context", {}).get("user_id", "anonymous"),
+                data_type="order_info",
+                operation="query",
+                success=True
+            )
         
         # Update state with response
         state = update_state_with_response(
@@ -178,6 +291,18 @@ async def call_order_agent(state: LangGraphState) -> LangGraphState:
 async def call_recommendation_agent(state: LangGraphState) -> LangGraphState:
     """Recommendation agent hívása LangGraph workflow-ban."""
     try:
+        # Security validation
+        if not _validate_security_context(state):
+            error_response = AIMessage(content="Biztonsági hiba: Hiányzó biztonsági kontextus.")
+            state["messages"].append(error_response)
+            return state
+        
+        # GDPR consent check
+        if not await _validate_gdpr_consent(state, ConsentType.FUNCTIONAL, DataCategory.PERSONAL):
+            error_response = AIMessage(content="Sajnálom, ehhez a funkcióhoz szükségem van a hozzájárulásodra.")
+            state["messages"].append(error_response)
+            return state
+        
         # Get the last message
         last_message = state["messages"][-1].content
         
@@ -192,6 +317,16 @@ async def call_recommendation_agent(state: LangGraphState) -> LangGraphState:
         
         # Call Pydantic AI agent
         result = await call_recommendation_agent(last_message, deps)
+        
+        # Audit logging
+        audit_logger = state.get("audit_logger")
+        if audit_logger:
+            await audit_logger.log_data_access(
+                user_id=state.get("user_context", {}).get("user_id", "anonymous"),
+                data_type="recommendations",
+                operation="query",
+                success=True
+            )
         
         # Update state with response
         state = update_state_with_response(
@@ -222,6 +357,18 @@ async def call_recommendation_agent(state: LangGraphState) -> LangGraphState:
 async def call_marketing_agent(state: LangGraphState) -> LangGraphState:
     """Marketing agent hívása LangGraph workflow-ban."""
     try:
+        # Security validation
+        if not _validate_security_context(state):
+            error_response = AIMessage(content="Biztonsági hiba: Hiányzó biztonsági kontextus.")
+            state["messages"].append(error_response)
+            return state
+        
+        # GDPR consent check for marketing
+        if not _validate_gdpr_consent(state, ConsentType.MARKETING, DataCategory.MARKETING):
+            error_response = AIMessage(content="Sajnálom, a marketing funkciókhoz szükségem van a marketing hozzájárulásodra.")
+            state["messages"].append(error_response)
+            return state
+        
         # Get the last message
         last_message = state["messages"][-1].content
         
@@ -236,6 +383,16 @@ async def call_marketing_agent(state: LangGraphState) -> LangGraphState:
         
         # Call Pydantic AI agent
         result = await call_marketing_agent(last_message, deps)
+        
+        # Audit logging
+        audit_logger = state.get("audit_logger")
+        if audit_logger:
+            await audit_logger.log_data_access(
+                user_id=state.get("user_context", {}).get("user_id", "anonymous"),
+                data_type="marketing",
+                operation="query",
+                success=True
+            )
         
         # Update state with response
         state = update_state_with_response(
@@ -266,6 +423,18 @@ async def call_marketing_agent(state: LangGraphState) -> LangGraphState:
 async def call_general_agent(state: LangGraphState) -> LangGraphState:
     """General agent hívása LangGraph workflow-ban."""
     try:
+        # Security validation
+        if not _validate_security_context(state):
+            error_response = AIMessage(content="Biztonsági hiba: Hiányzó biztonsági kontextus.")
+            state["messages"].append(error_response)
+            return state
+        
+        # GDPR consent check for basic functionality
+        if not _validate_gdpr_consent(state, ConsentType.NECESSARY, DataCategory.TECHNICAL):
+            error_response = AIMessage(content="Sajnálom, a szolgáltatás használatához szükségem van az alapvető hozzájárulásodra.")
+            state["messages"].append(error_response)
+            return state
+        
         # Get the last message
         last_message = state["messages"][-1].content
         
@@ -280,6 +449,16 @@ async def call_general_agent(state: LangGraphState) -> LangGraphState:
         
         # Call Pydantic AI agent
         result = await call_general_agent(last_message, deps)
+        
+        # Audit logging
+        audit_logger = state.get("audit_logger")
+        if audit_logger:
+            await audit_logger.log_data_access(
+                user_id=state.get("user_context", {}).get("user_id", "anonymous"),
+                data_type="general",
+                operation="query",
+                success=True
+            )
         
         # Update state with response
         state = update_state_with_response(

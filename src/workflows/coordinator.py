@@ -16,6 +16,10 @@ from ..models.agent import AgentType, AgentResponse, LangGraphState
 from ..models.user import User
 from ..utils.state_management import create_initial_state, get_state_summary
 from .langgraph_workflow import get_workflow_manager
+# Security and audit imports
+from ..config.security import get_security_config, get_threat_detector, InputValidator
+from ..config.gdpr_compliance import get_gdpr_compliance, ConsentType, DataCategory
+from ..config.audit_logging import get_audit_logger, log_agent_interaction
 
 
 @dataclass
@@ -28,6 +32,7 @@ class CoordinatorDependencies:
     webshop_api: Optional[Any] = None
     security_context: Optional[Any] = None
     audit_logger: Optional[Any] = None
+    gdpr_compliance: Optional[Any] = None
 
 
 class CoordinatorAgent:
@@ -46,6 +51,11 @@ class CoordinatorAgent:
         self.llm = llm
         self.verbose = verbose
         self._workflow_manager = get_workflow_manager()
+        # Initialize security and audit components
+        self._security_config = get_security_config()
+        self._threat_detector = get_threat_detector()
+        self._audit_logger = get_audit_logger()
+        self._gdpr_compliance = get_gdpr_compliance()
     
     async def process_message(
         self,
@@ -66,13 +76,47 @@ class CoordinatorAgent:
         Returns:
             Agent válasz
         """
+        start_time = asyncio.get_event_loop().time()
+        
         try:
+            # Input validation and sanitization
+            sanitized_message = InputValidator.sanitize_string(message)
+            if sanitized_message != message:
+                if self.verbose:
+                    print(f"Input sanitized: {message[:50]}... -> {sanitized_message[:50]}...")
+                message = sanitized_message
+            
+            # Threat detection
+            threat_analysis = self._threat_detector.detect_threats(message)
+            if threat_analysis["risk_level"] == "high":
+                # Log security event
+                await self._audit_logger.log_security_event(
+                    event_type="high_threat_detected",
+                    user_id=user.id if user else "anonymous",
+                    details=threat_analysis
+                )
+                
+                error_response = AgentResponse(
+                    agent_type=AgentType.COORDINATOR,
+                    response_text="Sajnálom, a kérés biztonsági okokból nem feldolgozható.",
+                    confidence=0.0,
+                    metadata={
+                        "error": "high_threat_detected",
+                        "threat_analysis": threat_analysis,
+                        "session_id": session_id,
+                        "user_id": user.id if user else None
+                    }
+                )
+                return error_response
+            
             # Prepare dependencies
             if dependencies is None:
                 dependencies = CoordinatorDependencies(
                     user=user,
                     session_id=session_id,
-                    llm=self.llm
+                    llm=self.llm,
+                    audit_logger=self._audit_logger,
+                    gdpr_compliance=self._gdpr_compliance
                 )
             
             # Create initial LangGraph state
@@ -88,10 +132,11 @@ class CoordinatorAgent:
                 },
                 session_data={
                     "session_id": session_id,
-                    "timestamp": asyncio.get_event_loop().time()
+                    "timestamp": start_time
                 },
                 security_context=dependencies.security_context,
-                audit_logger=dependencies.audit_logger
+                audit_logger=dependencies.audit_logger,
+                gdpr_compliance=dependencies.gdpr_compliance
             )
             
             # Process message through LangGraph workflow
@@ -101,6 +146,9 @@ class CoordinatorAgent:
             response_text = self._extract_response_from_state(final_state)
             confidence = self._extract_confidence_from_state(final_state)
             metadata = self._extract_metadata_from_state(final_state)
+            
+            # Calculate processing time
+            processing_time = asyncio.get_event_loop().time() - start_time
             
             # Create agent response
             response = AgentResponse(
@@ -112,16 +160,32 @@ class CoordinatorAgent:
                     "user_id": user.id if user else None,
                     "langgraph_used": True,
                     "workflow_summary": get_state_summary(final_state),
+                    "processing_time": processing_time,
+                    "threat_analysis": threat_analysis,
                     **metadata
                 }
             )
             
+            # Audit logging for successful interaction
+            await log_agent_interaction(
+                user_id=user.id if user else "anonymous",
+                agent_name="coordinator",
+                query=message,
+                response=response_text,
+                session_id=session_id,
+                success=True
+            )
+            
             if self.verbose:
                 print(f"Koordinátor Agent válasz: {response_text[:100]}...")
+                print(f"Feldolgozási idő: {processing_time:.2f}s")
             
             return response
             
         except Exception as e:
+            # Calculate processing time for error case
+            processing_time = asyncio.get_event_loop().time() - start_time
+            
             # Error handling
             error_response = AgentResponse(
                 agent_type=AgentType.COORDINATOR,
@@ -131,8 +195,19 @@ class CoordinatorAgent:
                     "error": str(e),
                     "session_id": session_id,
                     "user_id": user.id if user else None,
-                    "langgraph_used": True
+                    "langgraph_used": True,
+                    "processing_time": processing_time
                 }
+            )
+            
+            # Audit logging for error
+            await log_agent_interaction(
+                user_id=user.id if user else "anonymous",
+                agent_name="coordinator",
+                query=message,
+                response=error_response.response_text,
+                session_id=session_id,
+                success=False
             )
             
             if self.verbose:
@@ -257,7 +332,10 @@ class CoordinatorAgent:
                 "status": "active",
                 "workflow_manager": "initialized",
                 "llm_available": self.llm is not None,
-                "verbose_mode": self.verbose
+                "verbose_mode": self.verbose,
+                "security_enabled": True,
+                "audit_logging_enabled": True,
+                "gdpr_compliance_enabled": True
             }
             
         except Exception as e:
