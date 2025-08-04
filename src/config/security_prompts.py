@@ -27,6 +27,7 @@ class SecurityContext:
     permissions: List[str]
     data_access_scope: List[str]
     audit_required: bool = True
+    gdpr_compliant: bool = True
 
 
 # =============================================================================

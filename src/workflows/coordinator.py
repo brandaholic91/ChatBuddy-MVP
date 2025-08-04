@@ -36,6 +36,7 @@ from ..models.user import User
 from ..agents.product_info.agent import create_product_info_agent
 from ..agents.order_status.agent import create_order_status_agent
 from ..agents.recommendations.agent import create_recommendation_agent
+from ..agents.marketing.agent import create_marketing_agent
 
 # Security imports
 from ..config.security_prompts import (
@@ -325,21 +326,65 @@ async def handle_recommendation_query(ctx: RunContext[CoordinatorDependencies], 
 
 async def handle_marketing_query(ctx: RunContext[CoordinatorDependencies], query: str) -> str:
     """
-    Marketing és kedvezményekkel kapcsolatos kérdések kezelése.
+    Marketing és kedvezményekkel kapcsolatos kérdések kezelése biztonsági fókusszal.
     
     Args:
+        ctx: RunContext with security dependencies
         query: Felhasználói kérdés
         
     Returns:
         Marketing információs válasz
     """
-    query_lower = query.lower()
+    # Security validation
+    if not ctx.deps.security_context:
+        return "Biztonsági hiba: Hiányzó biztonsági kontextus."
+    
+    # GDPR consent check
+    gdpr = ctx.deps.gdpr_compliance
+    if gdpr:
+        has_consent = await gdpr.check_user_consent(
+            ctx.deps.user.id if ctx.deps.user else "anonymous",
+            ConsentType.MARKETING,
+            DataCategory.PERSONAL
+        )
+        if not has_consent:
+            return "Sajnálom, a marketing üzenetekhez szükségem van a hozzájárulásodra."
+    
+    # Input sanitization
+    sanitized_query = _sanitize_input(query)
+    
+    # Security level classification
+    security_level = classify_security_level(sanitized_query, {})
+    
+    # Audit logging
+    audit_logger = ctx.deps.audit_logger
+    if audit_logger:
+        await audit_logger.log_data_access(
+            user_id=ctx.deps.user.id if ctx.deps.user else "anonymous",
+            data_type="marketing",
+            operation="query",
+            success=True,
+            details={"query": sanitized_query, "security_level": security_level.value}
+        )
+    
+    # Business logic with security constraints
+    query_lower = sanitized_query.lower()
+    
+    # Check for forbidden keywords
+    forbidden_keywords = ["belső kampány", "admin", "profit", "margin", "költség"]
+    if any(keyword in query_lower for keyword in forbidden_keywords):
+        return "Sajnálom, ezeket az információkat nem tudom megadni."
+    
     if "kedvezmény" in query_lower or "akció" in query_lower:
         return "Jelenleg több akció is fut! 10% kedvezmény az új vásárlókra, és ingyenes szállítás 50 ezer forint feletti rendelésekre."
     elif "kupon" in query_lower or "kód" in query_lower:
         return "Használd a 'UJ10' kódot 10% kedvezményre, vagy a 'INGYEN' kódot ingyenes szállításra!"
+    elif "email" in query_lower or "sms" in query_lower:
+        return "Email és SMS értesítéseket küldünk a legújabb akciókról és kedvezményekről. Feliratkozhatsz a hírlevelünkre!"
+    elif "kampány" in query_lower or "campaign" in query_lower:
+        return "Jelenleg több marketing kampány is fut. Szeretnéd, hogy részleteket küldjek valamelyikről?"
     else:
-        return f"Marketing ügynök: {query} - Van valamilyen akciós ajánlatunk, ami érdekel!"
+        return f"Marketing ügynök: {sanitized_query} - Van valamilyen akciós ajánlatunk, ami érdekel!"
 
 
 async def handle_general_query(ctx: RunContext[CoordinatorDependencies], query: str) -> str:
@@ -521,7 +566,43 @@ async def call_marketing_agent(state: AgentState) -> AgentState:
     """Marketing agent hívása LangGraph workflow-ban."""
     try:
         last_message = state["messages"][-1].content
-        response_text = await handle_marketing_query_simple(last_message)
+        
+        # Import marketing agent dependencies
+        from ..agents.marketing.tools import MarketingDependencies
+        from ..config.security_prompts import SecurityContext
+        from ..config.audit_logging import SecurityAuditLogger
+        
+        # Mock dependencies for development
+        class MockEmailService:
+            async def send_email(self, *args, **kwargs):
+                return {"success": True, "message_id": "mock_email_123"}
+        
+        class MockSMSService:
+            async def send_sms(self, *args, **kwargs):
+                return {"success": True, "message_id": "mock_sms_123"}
+        
+        deps = MarketingDependencies(
+            supabase_client=None,  # Mock for development
+            email_service=MockEmailService(),
+            sms_service=MockSMSService(),
+            user_context=state.get("user_context", {}),
+            security_context=SecurityContext(
+                user_id=state.get("user_context", {}).get("user_id", "unknown"),
+                session_id=state.get("user_context", {}).get("session_id", "unknown"),
+                security_level="medium",
+                gdpr_compliant=True
+            ),
+            audit_logger=SecurityAuditLogger()
+        )
+        
+        # Try to use Pydantic AI marketing agent
+        try:
+            marketing_agent = create_marketing_agent()
+            result = await marketing_agent.run(last_message, deps)
+            response_text = result.output.response_text
+        except Exception as agent_error:
+            # Fallback to simple handler
+            response_text = await handle_marketing_query_simple(last_message)
         
         response = AIMessage(content=response_text)
         state["messages"].append(response)
@@ -594,6 +675,12 @@ async def handle_marketing_query_simple(query: str) -> str:
         return "Jelenleg több akció is fut! 10% kedvezmény az új vásárlókra, és ingyenes szállítás 50 ezer forint feletti rendelésekre."
     elif "kupon" in query_lower or "kód" in query_lower:
         return "Használd a 'UJ10' kódot 10% kedvezményre, vagy a 'INGYEN' kódot ingyenes szállításra!"
+    elif "email" in query_lower or "sms" in query_lower:
+        return "Email és SMS értesítéseket küldünk a legújabb akciókról és kedvezményekről. Feliratkozhatsz a hírlevelünkre!"
+    elif "kampány" in query_lower or "campaign" in query_lower:
+        return "Jelenleg több marketing kampány is fut. Szeretnéd, hogy részleteket küldjek valamelyikről?"
+    elif "kosár" in query_lower and ("elhagyott" in query_lower or "abandoned" in query_lower):
+        return "Kosárelhagyás esetén automatikusan küldünk follow-up emailt kedvezmény kóddal!"
     else:
         return f"Marketing ügynök: {query} - Van valamilyen akciós ajánlatunk, ami érdekel!"
 

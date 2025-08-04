@@ -14,12 +14,13 @@ Az agent Pydantic AI keretrendszerben épül és LangGraph workflow-ba integrál
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 from datetime import datetime
+from decimal import Decimal
 from pydantic_ai import Agent, RunContext
 from pydantic import BaseModel, Field
 
 from src.config.security_prompts import SecurityContext
 from src.config.audit_logging import SecurityAuditLogger
-from src.models.product import Product, ProductCategory
+from src.models.product import Product, ProductCategory, ProductStatus
 from src.models.user import User
 
 @dataclass
@@ -72,6 +73,7 @@ async def get_user_preferences_impl(ctx: RunContext[RecommendationDependencies],
             await ctx.deps.audit_logger.log_agent_interaction(
                 agent_type="recommendation",
                 user_id=user_id,
+                session_id=ctx.deps.user_context.get('session_id'),
                 query=f"get_user_preferences({user_id})",
                 response=str(mock_preferences)
             )
@@ -83,7 +85,7 @@ async def get_user_preferences_impl(ctx: RunContext[RecommendationDependencies],
             await ctx.deps.audit_logger.log_security_event(
                 event_type="error",
                 severity="warning",
-                message=f"Error getting user preferences: {str(e)}",
+                description=f"Error getting user preferences: {str(e)}",
                 user_id=user_id
             )
         return {}
@@ -110,9 +112,8 @@ async def find_similar_products_impl(ctx: RunContext[RecommendationDependencies]
                 id=f"similar_{i}",
                 name=f"Hasonló termék {i}",
                 description=f"Ez egy hasonló termék a {product_id} termékhez",
-                price=10000 + (i * 1000),
-                category=ProductCategory.ELECTRONICS,
-                available=True,
+                price=Decimal(str(10000 + (i * 1000))),
+                status=ProductStatus.ACTIVE,
                 created_at=datetime.now()
             )
             for i in range(1, limit + 1)
@@ -123,6 +124,7 @@ async def find_similar_products_impl(ctx: RunContext[RecommendationDependencies]
             await ctx.deps.audit_logger.log_agent_interaction(
                 agent_type="recommendation",
                 user_id=ctx.deps.user_context.get("user_id", "unknown"),
+                session_id=ctx.deps.user_context.get('session_id'),
                 query=f"find_similar_products({product_id}, {limit})",
                 response=f"Found {len(mock_similar_products)} similar products"
             )
@@ -134,7 +136,7 @@ async def find_similar_products_impl(ctx: RunContext[RecommendationDependencies]
             await ctx.deps.audit_logger.log_security_event(
                 event_type="error",
                 severity="warning",
-                message=f"Error finding similar products: {str(e)}",
+                description=f"Error finding similar products: {str(e)}",
                 user_id=ctx.deps.user_context.get("user_id", "unknown")
             )
         return []
@@ -169,6 +171,7 @@ async def analyze_trends_impl(ctx: RunContext[RecommendationDependencies], categ
             await ctx.deps.audit_logger.log_agent_interaction(
                 agent_type="recommendation",
                 user_id=ctx.deps.user_context.get("user_id", "unknown"),
+                session_id=ctx.deps.user_context.get('session_id'),
                 query=f"analyze_trends({category})",
                 response=str(mock_trends)
             )
@@ -180,7 +183,7 @@ async def analyze_trends_impl(ctx: RunContext[RecommendationDependencies], categ
             await ctx.deps.audit_logger.log_security_event(
                 event_type="error",
                 severity="warning",
-                message=f"Error analyzing trends: {str(e)}",
+                description=f"Error analyzing trends: {str(e)}",
                 user_id=ctx.deps.user_context.get("user_id", "unknown")
             )
         return {}
@@ -210,9 +213,8 @@ async def get_personalized_recommendations_impl(ctx: RunContext[RecommendationDe
                 id=f"rec_{i}",
                 name=f"Személyre szabott ajánlat {i}",
                 description=f"Ez egy személyre szabott ajánlat a {user_id} felhasználónak",
-                price=5000 + (i * 500),
-                category=ProductCategory.ELECTRONICS if i % 2 == 0 else ProductCategory.BOOKS,
-                available=True,
+                price=Decimal(str(5000 + (i * 500))),
+                status=ProductStatus.ACTIVE,
                 created_at=datetime.now()
             )
             for i in range(1, limit + 1)
@@ -223,6 +225,7 @@ async def get_personalized_recommendations_impl(ctx: RunContext[RecommendationDe
             await ctx.deps.audit_logger.log_agent_interaction(
                 agent_type="recommendation",
                 user_id=user_id,
+                session_id=ctx.deps.user_context.get('session_id'),
                 query=f"get_personalized_recommendations({user_id}, {limit})",
                 response=f"Generated {len(mock_recommendations)} personalized recommendations"
             )
@@ -234,7 +237,7 @@ async def get_personalized_recommendations_impl(ctx: RunContext[RecommendationDe
             await ctx.deps.audit_logger.log_security_event(
                 event_type="error",
                 severity="warning",
-                message=f"Error getting personalized recommendations: {str(e)}",
+                description=f"Error getting personalized recommendations: {str(e)}",
                 user_id=user_id
             )
         return []

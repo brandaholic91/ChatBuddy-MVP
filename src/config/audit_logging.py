@@ -348,6 +348,46 @@ class SecurityAuditLogger:
         
         await self.audit_queue.put(event)
     
+    async def log_error(
+        self,
+        error_type: str,
+        error_message: str,
+        user_id: Optional[str] = None,
+        session_id: Optional[str] = None,
+        agent_type: Optional[str] = None,
+        details: Dict[str, Any] = None
+    ):
+        """
+        Hiba esemény naplózása.
+        
+        Args:
+            error_type: Hiba típusa
+            error_message: Hiba üzenet
+            user_id: Felhasználó azonosító
+            session_id: Session azonosító
+            agent_type: Agent típusa
+            details: Részletek
+        """
+        event = AuditEvent(
+            event_id=self._generate_event_id(),
+            event_type=AuditEventType.ERROR_EVENT,
+            timestamp=datetime.now(timezone.utc),
+            user_id=user_id,
+            session_id=session_id,
+            agent_type=agent_type,
+            severity=SecuritySeverity.HIGH,
+            source_ip=None,
+            user_agent=None,
+            event_data={
+                "error_type": error_type,
+                "error_message": self._sanitize_input(error_message),
+                "details": self._sanitize_data(details or {})
+            },
+            metadata={}
+        )
+        
+        await self.audit_queue.put(event)
+    
     async def _log_event(self, event: AuditEvent):
         """Esemény naplózása minden célrendszerbe."""
         try:
