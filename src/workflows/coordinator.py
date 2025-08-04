@@ -32,6 +32,10 @@ from ..models.chat import ChatMessage, ChatSession, ChatState, MessageType
 from ..models.agent import AgentType, AgentDecision, AgentResponse
 from ..models.user import User
 
+# Agent imports
+from ..agents.product_info.agent import create_product_info_agent
+from ..agents.order_status.agent import create_order_status_agent
+
 # Security imports
 from ..config.security_prompts import (
     SecurityContext, SecurityLevel, classify_security_level,
@@ -418,17 +422,36 @@ async def call_product_agent(state: AgentState) -> AgentState:
 
 
 async def call_order_agent(state: AgentState) -> AgentState:
-    """Order agent hívása LangGraph workflow-ban."""
+    """Order Status Agent hívása LangGraph workflow-ban."""
     try:
         last_message = state["messages"][-1].content
-        response_text = await handle_order_query_simple(last_message)
+        
+        # Order Status Agent létrehozása és hívása
+        order_agent = create_order_status_agent()
+        
+        # Mock dependencies (fejlesztési célokra)
+        from ..agents.order_status.agent import OrderStatusDependencies
+        deps = OrderStatusDependencies(
+            supabase_client=None,  # TODO: Implement
+            webshop_api=None,      # TODO: Implement
+            user_context=state.get("user_context", {}),
+            security_context=None,  # TODO: Implement
+            audit_logger=None       # TODO: Implement
+        )
+        
+        # Agent hívása
+        if hasattr(order_agent, 'run'):
+            result = await order_agent.run(last_message, deps)
+            response_text = result.message if hasattr(result, 'message') else str(result)
+        else:
+            response_text = await handle_order_query_simple(last_message)
         
         response = AIMessage(content=response_text)
         state["messages"].append(response)
         
         return state
     except Exception as e:
-        error_response = AIMessage(content=f"Sajnálom, hiba történt: {str(e)}")
+        error_response = AIMessage(content=f"Sajnálom, hiba történt a rendelés kezelés során: {str(e)}")
         state["messages"].append(error_response)
         return state
 
