@@ -15,6 +15,30 @@ httpx>=0.25.0
 # Security és Rate Limiting
 slowapi>=0.1.9
 python-multipart>=0.0.6
+# Additional security dependencies
+cryptography>=41.0.0
+bcrypt>=4.0.0
+python-jose[cryptography]>=3.3.0
+passlib[bcrypt]>=1.7.4
+# JWT és token kezelés
+PyJWT>=2.8.0
+# Input validation és sanitization
+bleach>=6.0.0
+# Security headers
+secure>=0.3.0
+# Rate limiting
+limits>=3.6.0
+# IP filtering
+ipaddress>=1.0.23
+# LangGraph SDK (hivatalos authentication)
+langgraph-sdk>=0.0.1
+# Security monitoring
+logfire>=0.0.1
+# Environment validation
+pydantic-settings>=2.0.0
+# Additional security tools
+bandit>=1.7.0  # Security linter
+safety>=2.3.0  # Dependency vulnerability scanner
 
 # Adatbázis és Cache
 supabase>=2.3.0

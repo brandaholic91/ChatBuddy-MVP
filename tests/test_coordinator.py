@@ -3,7 +3,7 @@ Tesztelés a Koordinátor Agent-hez.
 
 Ez a modul teszteli:
 - Üzenet kategorizálás és routing
-- LangGraph prebuilt agent működése
+- LangGraph workflow működése
 - Error handling és recovery
 - State management
 """
@@ -15,13 +15,13 @@ from typing import Optional
 
 from src.workflows.coordinator import (
     CoordinatorAgent,
-    CoordinatorState,
     MessageCategory,
     get_coordinator_agent,
     process_chat_message
 )
 from src.models.agent import AgentResponse, AgentType
 from src.models.user import User
+from langchain_core.messages import HumanMessage
 
 
 class TestMessageCategory:
@@ -35,38 +35,6 @@ class TestMessageCategory:
         assert MessageCategory.MARKETING.value == "marketing"
         assert MessageCategory.GENERAL.value == "general"
         assert MessageCategory.UNKNOWN.value == "unknown"
-
-
-class TestCoordinatorState:
-    """CoordinatorState dataclass tesztelése."""
-    
-    def test_coordinator_state_initialization(self):
-        """Ellenőrzi a CoordinatorState inicializálását."""
-        state = CoordinatorState(messages=[])
-        
-        assert state.messages == []
-        assert state.user is None
-        assert state.session_id is None
-        assert state.category is None
-        assert state.decision is None
-        assert state.response is None
-        assert state.metadata == {}
-    
-    def test_coordinator_state_with_data(self):
-        """Ellenőrzi a CoordinatorState adatokkal való inicializálását."""
-        user = User(id="test_user", email="test@example.com")
-        state = CoordinatorState(
-            messages=[],
-            user=user,
-            session_id="test_session",
-            category=MessageCategory.PRODUCT_INFO,
-            metadata={"test": "value"}
-        )
-        
-        assert state.user == user
-        assert state.session_id == "test_session"
-        assert state.category == MessageCategory.PRODUCT_INFO
-        assert state.metadata["test"] == "value"
 
 
 class TestCoordinatorAgent:
@@ -84,22 +52,8 @@ class TestCoordinatorAgent:
     def test_coordinator_agent_initialization(self, coordinator_agent):
         """Ellenőrzi a CoordinatorAgent inicializálását."""
         assert coordinator_agent.llm is not None
-        assert coordinator_agent.tools is not None
-        assert len(coordinator_agent.tools) == 6  # 6 tool van definiálva
-        assert coordinator_agent.agent is not None
-        assert isinstance(coordinator_agent.state, CoordinatorState)
-    
-    def test_create_default_tools(self, coordinator_agent):
-        """Ellenőrzi az alapértelmezett tool-ok létrehozását."""
-        tools = coordinator_agent._create_default_tools()
-        
-        assert len(tools) == 6
-        assert coordinator_agent._categorize_message in tools
-        assert coordinator_agent._route_to_product_agent in tools
-        assert coordinator_agent._route_to_order_agent in tools
-        assert coordinator_agent._route_to_recommendation_agent in tools
-        assert coordinator_agent._route_to_marketing_agent in tools
-        assert coordinator_agent._handle_general_query in tools
+        assert coordinator_agent.state is not None
+        assert isinstance(coordinator_agent.state, dict)
     
     def test_categorize_message_product_info(self, coordinator_agent):
         """Ellenőrzi a termék információs üzenet kategorizálását."""
@@ -177,60 +131,27 @@ class TestCoordinatorAgent:
         result = "category: general"
         assert "general" in result
     
-    def test_route_to_product_agent(self, coordinator_agent):
-        """Ellenőrzi a termék agent routing-ot."""
-        # Test the routing logic directly
-        query = "Keresek telefont"
-        result = f"Termék információs agent: {query} - Ez a funkció még fejlesztés alatt áll."
-        assert "Termék információs agent" in result
-        assert "fejlesztés alatt áll" in result
-    
-    def test_route_to_order_agent(self, coordinator_agent):
-        """Ellenőrzi az order agent routing-ot."""
-        query = "Hol van a rendelésem?"
-        result = f"Rendelési státusz agent: {query} - Ez a funkció még fejlesztés alatt áll."
-        assert "Rendelési státusz agent" in result
-        assert "fejlesztés alatt áll" in result
-    
-    def test_route_to_recommendation_agent(self, coordinator_agent):
-        """Ellenőrzi az ajánlási agent routing-ot."""
-        query = "Ajánlj termékeket"
-        result = f"Ajánlási agent: {query} - Ez a funkció még fejlesztés alatt áll."
-        assert "Ajánlási agent" in result
-        assert "fejlesztés alatt áll" in result
-    
-    def test_route_to_marketing_agent(self, coordinator_agent):
-        """Ellenőrzi a marketing agent routing-ot."""
-        query = "Van kedvezmény?"
-        result = f"Marketing agent: {query} - Ez a funkció még fejlesztés alatt áll."
-        assert "Marketing agent" in result
-        assert "fejlesztés alatt áll" in result
-    
-    def test_handle_general_query(self, coordinator_agent):
-        """Ellenőrzi az általános kérdések kezelését."""
-        query = "Szia"
-        result = f"Általános kérdés: {query} - Miben segíthetek?"
-        assert "Általános kérdés" in result
-        assert "Miben segíthetek" in result
-    
     def test_get_state(self, coordinator_agent):
         """Ellenőrzi az állapot lekérését."""
         state = coordinator_agent.get_state()
-        assert isinstance(state, CoordinatorState)
+        assert isinstance(state, dict)
         assert state == coordinator_agent.state
     
     def test_reset_state(self, coordinator_agent):
         """Ellenőrzi az állapot visszaállítását."""
         # Adatok hozzáadása
-        coordinator_agent.state.user = User(id="test", email="test@example.com")
-        coordinator_agent.state.session_id = "test_session"
+        coordinator_agent.state["messages"] = [HumanMessage(content="test message")]
+        coordinator_agent.state["user"] = User(id="test", email="test@example.com")
+        coordinator_agent.state["session_id"] = "test_session"
         
         # Állapot visszaállítása
         coordinator_agent.reset_state()
         
-        assert coordinator_agent.state.user is None
-        assert coordinator_agent.state.session_id is None
-        assert coordinator_agent.state.messages == []
+        # A reset_state csak a messages listát állítja vissza
+        assert coordinator_agent.state["messages"] == []
+        # A többi kulcs megmarad, mert a reset_state nem törli őket
+        # De a valós implementációban a reset_state teljesen újradefiniálja a state-et
+        assert coordinator_agent.state == {"messages": []}
 
 
 class TestCoordinatorAgentAsync:
@@ -250,11 +171,19 @@ class TestCoordinatorAgentAsync:
         """Ellenőrzi a sikeres üzenet feldolgozást."""
         user = User(id="test_user", email="test@example.com")
         
-        # Mock the LangGraph agent
-        mock_message = Mock()
-        mock_message.content = "Válasz a kérdésre"
-        mock_response = {"messages": [mock_message]}
-        coordinator_agent.agent.ainvoke = AsyncMock(return_value=mock_response)
+        # Mock the LangGraph workflow to return a proper response
+        from langchain_core.messages import AIMessage
+        mock_ai_message = AIMessage(content="Válasz a kérdésre")
+        mock_response = {
+            "messages": [mock_ai_message],
+            "current_agent": "coordinator",
+            "user_context": {"user": user},
+            "session_data": {"session_id": "test_session"},
+            "error_count": 0,
+            "retry_attempts": 0
+        }
+        coordinator_agent._get_langgraph_workflow = Mock()
+        coordinator_agent._get_langgraph_workflow.return_value.ainvoke = AsyncMock(return_value=mock_response)
         
         result = await coordinator_agent.process_message(
             "Keresek telefont",
@@ -264,6 +193,8 @@ class TestCoordinatorAgentAsync:
         
         assert isinstance(result, AgentResponse)
         assert result.agent_type == AgentType.COORDINATOR
+        # A valós implementációban a response_text a last_message.content-ből jön
+        # de ha nincs AIMessage, akkor "Sajnálom, nem sikerült válaszolni."
         assert result.response_text == "Válasz a kérdésre"
         assert result.metadata["user_id"] == "test_user"
         assert result.metadata["session_id"] == "test_session"
@@ -271,8 +202,9 @@ class TestCoordinatorAgentAsync:
     @pytest.mark.asyncio
     async def test_process_message_error(self, coordinator_agent):
         """Ellenőrzi a hibás üzenet feldolgozást."""
-        # Mock the LangGraph agent to raise an exception
-        coordinator_agent.agent.ainvoke = AsyncMock(side_effect=Exception("Test error"))
+        # Mock the LangGraph workflow to raise an exception
+        coordinator_agent._get_langgraph_workflow = Mock()
+        coordinator_agent._get_langgraph_workflow.return_value.ainvoke = AsyncMock(side_effect=Exception("Test error"))
         
         result = await coordinator_agent.process_message("Test message")
         
@@ -303,32 +235,65 @@ class TestSingletonFunctions:
     async def test_process_chat_message(self):
         """Ellenőrzi a process_chat_message függvényt."""
         user = User(id="test_user", email="test@example.com")
-        
-        # Mock the coordinator agent
-        with patch('src.workflows.coordinator.get_coordinator_agent') as mock_get_agent:
-            mock_agent = Mock()
-            mock_response = AgentResponse(
-                content="Test response",
-                agent_type=AgentType.COORDINATOR,
-                response_text="Test response",
-                confidence=0.9
-            )
-            mock_agent.process_message = AsyncMock(return_value=mock_response)
-            mock_get_agent.return_value = mock_agent
-            
-            result = await process_chat_message(
-                "Test message",
-                user=user,
-                session_id="test_session"
-            )
-            
-            assert result == mock_response
-            # Check that process_message was called with correct arguments
-            mock_agent.process_message.assert_called_once()
-            call_args = mock_agent.process_message.call_args
-            assert call_args[0][0] == "Test message"  # First positional argument
-            assert call_args[1]["user"] == user  # user keyword argument
-            assert call_args[1]["session_id"] == "test_session"  # session_id keyword argument
+
+        # Mock ChatOpenAI to avoid API key requirement
+        with patch('src.workflows.coordinator.ChatOpenAI') as mock_chat_openai:
+            mock_llm = Mock()
+            mock_chat_openai.return_value = mock_llm
+
+            # Mock the Pydantic AI agent to return a proper response
+            with patch('src.workflows.coordinator.create_coordinator_agent') as mock_create_agent:
+                mock_agent = Mock()
+                # Mock a successful response with proper structure
+                mock_result = Mock()
+                mock_output = Mock()
+                mock_output.response_text = "Ez egy teszt válasz"
+                mock_output.confidence = 0.9
+                mock_output.gdpr_compliant = True
+                mock_output.audit_required = False
+                mock_output.agent_used = "coordinator"
+                mock_output.category = "general"
+                mock_output.security_level = "low"  # String value, not Mock
+                mock_result.output = mock_output
+                mock_agent.run = AsyncMock(return_value=mock_result)
+                mock_create_agent.return_value = mock_agent
+
+                # Mock security context
+                with patch('src.workflows.coordinator.create_security_context') as mock_security:
+                    mock_security.return_value = Mock()
+                    mock_security.return_value.security_level = Mock()
+                    mock_security.return_value.security_level.value = "low"
+
+                    # Mock audit logger
+                    with patch('src.workflows.coordinator.get_security_audit_logger') as mock_audit:
+                        mock_audit.return_value = Mock()
+                        mock_audit.return_value.log_security_event = AsyncMock()
+
+                        # Mock audit context
+                        with patch('src.workflows.coordinator.audit_context') as mock_context:
+                            mock_context.return_value.__aenter__ = AsyncMock()
+                            mock_context.return_value.__aexit__ = AsyncMock()
+
+                            # Mock GDPR compliance
+                            with patch('src.workflows.coordinator.get_gdpr_compliance') as mock_gdpr:
+                                mock_gdpr.return_value = Mock()
+
+                                result = await process_chat_message(
+                                    "Test message",
+                                    user=user,
+                                    session_id="test_session"
+                                )
+
+                                # Verify the response
+                                assert isinstance(result, AgentResponse)
+                                assert result.agent_type == AgentType.COORDINATOR
+                                assert result.response_text == "Ez egy teszt válasz"
+                                assert result.confidence == 0.9
+                                assert result.metadata["security_level"] == "low"
+                                assert result.metadata["gdpr_compliant"] == True
+                                assert result.metadata["audit_required"] == False
+                                assert result.metadata["agent_used"] == "coordinator"
+                                assert result.metadata["category"] == "general"
 
 
 class TestIntegration:
@@ -352,7 +317,7 @@ class TestIntegration:
         
         assert isinstance(result, AgentResponse)
         assert result.agent_type == AgentType.COORDINATOR
-        assert len(result.content) > 0
+        assert len(result.response_text) > 0
 
 
 if __name__ == "__main__":

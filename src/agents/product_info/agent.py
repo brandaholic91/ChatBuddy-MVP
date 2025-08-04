@@ -79,7 +79,7 @@ class ProductAgentState(TypedDict):
 
 def create_product_info_agent() -> Agent:
     """Product Info Agent létrehozása Pydantic AI-val."""
-    return Agent(
+    agent = Agent(
         'openai:gpt-4o',
         deps_type=ProductInfoDependencies,
         output_type=ProductInfoOutput,
@@ -90,6 +90,23 @@ def create_product_info_agent() -> Agent:
             "Válaszolj magyarul, barátságosan és részletesen."
         )
     )
+    
+    # Tool-ok regisztrálása a hivatalos dokumentáció szerint
+    agent.tool(handle_product_search)
+    agent.tool(handle_product_details)
+    agent.tool(handle_product_reviews)
+    agent.tool(handle_product_availability)
+    agent.tool(handle_product_pricing)
+    
+    # System prompt hozzáadása
+    @agent.system_prompt
+    async def add_user_context(ctx: RunContext[ProductInfoDependencies]) -> str:
+        """Felhasználói kontextus hozzáadása a system prompt-hoz."""
+        if ctx.deps.user:
+            return f"A felhasználó neve: {ctx.deps.user.name}"
+        return ""
+    
+    return agent
 
 
 # LangGraph Tool Functions
@@ -401,7 +418,7 @@ def route_product_query(state: ProductAgentState) -> Command[Literal["search_pro
         return Command(goto="general_response")
 
 
-def call_search_products(state: ProductAgentState) -> Command[Literal["coordinator"]]:
+async def call_search_products(state: ProductAgentState) -> Command[Literal["coordinator"]]:
     """Product search hívása LangGraph workflow-ban."""
     try:
         deps = ProductInfoDependencies(
@@ -413,7 +430,7 @@ def call_search_products(state: ProductAgentState) -> Command[Literal["coordinat
         agent.tool(handle_product_search)
         
         last_message = state["messages"][-1].content
-        result = asyncio.run(agent.run(last_message, deps=deps))
+        result = await agent.run(last_message, deps=deps)
         
         response = AIMessage(content=result.output.response_text)
         
@@ -429,7 +446,7 @@ def call_search_products(state: ProductAgentState) -> Command[Literal["coordinat
         )
 
 
-def call_get_details(state: ProductAgentState) -> Command[Literal["coordinator"]]:
+async def call_get_details(state: ProductAgentState) -> Command[Literal["coordinator"]]:
     """Product details hívása LangGraph workflow-ban."""
     try:
         deps = ProductInfoDependencies(
@@ -441,7 +458,7 @@ def call_get_details(state: ProductAgentState) -> Command[Literal["coordinator"]
         agent.tool(handle_product_details)
         
         last_message = state["messages"][-1].content
-        result = asyncio.run(agent.run(last_message, deps=deps))
+        result = await agent.run(last_message, deps=deps)
         
         response = AIMessage(content=result.output.response_text)
         
@@ -457,7 +474,7 @@ def call_get_details(state: ProductAgentState) -> Command[Literal["coordinator"]
         )
 
 
-def call_get_reviews(state: ProductAgentState) -> Command[Literal["coordinator"]]:
+async def call_get_reviews(state: ProductAgentState) -> Command[Literal["coordinator"]]:
     """Product reviews hívása LangGraph workflow-ban."""
     try:
         deps = ProductInfoDependencies(
@@ -469,7 +486,7 @@ def call_get_reviews(state: ProductAgentState) -> Command[Literal["coordinator"]
         agent.tool(handle_product_reviews)
         
         last_message = state["messages"][-1].content
-        result = asyncio.run(agent.run(last_message, deps=deps))
+        result = await agent.run(last_message, deps=deps)
         
         response = AIMessage(content=result.output.response_text)
         
@@ -485,7 +502,7 @@ def call_get_reviews(state: ProductAgentState) -> Command[Literal["coordinator"]
         )
 
 
-def call_check_availability(state: ProductAgentState) -> Command[Literal["coordinator"]]:
+async def call_check_availability(state: ProductAgentState) -> Command[Literal["coordinator"]]:
     """Product availability hívása LangGraph workflow-ban."""
     try:
         deps = ProductInfoDependencies(
@@ -497,7 +514,7 @@ def call_check_availability(state: ProductAgentState) -> Command[Literal["coordi
         agent.tool(handle_product_availability)
         
         last_message = state["messages"][-1].content
-        result = asyncio.run(agent.run(last_message, deps=deps))
+        result = await agent.run(last_message, deps=deps)
         
         response = AIMessage(content=result.output.response_text)
         
@@ -513,7 +530,7 @@ def call_check_availability(state: ProductAgentState) -> Command[Literal["coordi
         )
 
 
-def call_get_pricing(state: ProductAgentState) -> Command[Literal["coordinator"]]:
+async def call_get_pricing(state: ProductAgentState) -> Command[Literal["coordinator"]]:
     """Product pricing hívása LangGraph workflow-ban."""
     try:
         deps = ProductInfoDependencies(
@@ -525,7 +542,7 @@ def call_get_pricing(state: ProductAgentState) -> Command[Literal["coordinator"]
         agent.tool(handle_product_pricing)
         
         last_message = state["messages"][-1].content
-        result = asyncio.run(agent.run(last_message, deps=deps))
+        result = await agent.run(last_message, deps=deps)
         
         response = AIMessage(content=result.output.response_text)
         
@@ -541,7 +558,7 @@ def call_get_pricing(state: ProductAgentState) -> Command[Literal["coordinator"]
         )
 
 
-def call_general_response(state: ProductAgentState) -> Command[Literal["coordinator"]]:
+async def call_general_response(state: ProductAgentState) -> Command[Literal["coordinator"]]:
     """General response hívása LangGraph workflow-ban."""
     try:
         deps = ProductInfoDependencies(
@@ -552,7 +569,7 @@ def call_general_response(state: ProductAgentState) -> Command[Literal["coordina
         agent = create_product_info_agent()
         
         last_message = state["messages"][-1].content
-        result = asyncio.run(agent.run(last_message, deps=deps))
+        result = await agent.run(last_message, deps=deps)
         
         response = AIMessage(content=result.output.response_text)
         
@@ -572,7 +589,7 @@ def create_langgraph_workflow() -> StateGraph:
     """LangGraph workflow létrehozása."""
     workflow = StateGraph(ProductAgentState)
     
-    # Nodes hozzáadása
+    # Nodes hozzáadása - async függvények
     workflow.add_node("coordinator", route_product_query)
     workflow.add_node("search_products", call_search_products)
     workflow.add_node("get_details", call_get_details)
@@ -614,21 +631,6 @@ class ProductInfoAgent:
         """Product Info Agent létrehozása vagy lekérése."""
         if self._product_info_agent is None:
             self._product_info_agent = create_product_info_agent()
-            
-            # Tool-ok regisztrálása
-            self._product_info_agent.tool(handle_product_search)
-            self._product_info_agent.tool(handle_product_details)
-            self._product_info_agent.tool(handle_product_reviews)
-            self._product_info_agent.tool(handle_product_availability)
-            self._product_info_agent.tool(handle_product_pricing)
-            
-            # System prompt hozzáadása
-            @self._product_info_agent.system_prompt
-            async def add_user_context(ctx: RunContext[ProductInfoDependencies]) -> str:
-                """Felhasználói kontextus hozzáadása a system prompt-hoz."""
-                if ctx.deps.user:
-                    return f"A felhasználó neve: {ctx.deps.user.name}"
-                return ""
         
         return self._product_info_agent
     
@@ -668,7 +670,7 @@ class ProductInfoAgent:
                 retry_attempts=0
             )
             
-            # LangGraph workflow futtatása
+            # LangGraph workflow futtatása - async context-ben
             workflow = self._get_langgraph_workflow()
             result = await workflow.ainvoke(langgraph_state)
             
