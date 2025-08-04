@@ -35,6 +35,7 @@ from ..models.user import User
 # Agent imports
 from ..agents.product_info.agent import create_product_info_agent
 from ..agents.order_status.agent import create_order_status_agent
+from ..agents.recommendations.agent import create_recommendation_agent
 
 # Security imports
 from ..config.security_prompts import (
@@ -363,7 +364,7 @@ async def handle_general_query(ctx: RunContext[CoordinatorDependencies], query: 
 
 
 # LangGraph Workflow Functions - EGYSZERŰSÍTETT VÁLTOZAT
-def route_message(state: AgentState) -> AgentState:
+def route_message(state: AgentState) -> str:
     """
     Üzenet routing a megfelelő agent-hez LangGraph StateGraph-ban.
     
@@ -371,34 +372,34 @@ def route_message(state: AgentState) -> AgentState:
         state: Jelenlegi agent állapot
         
     Returns:
-        Frissített állapot routing információval
+        Következő node neve
     """
     try:
         # Get the last message
         if not state.get("messages"):
-            return {**state, "current_agent": "general_agent"}
+            return "general_agent"
         
         last_message = state["messages"][-1]
         if not hasattr(last_message, 'content'):
-            return {**state, "current_agent": "general_agent"}
+            return "general_agent"
         
         message_content = last_message.content.lower()
         
         # Simple keyword-based routing
-        if any(word in message_content for word in ["termék", "telefon", "ár", "készlet", "specifikáció"]):
-            return {**state, "current_agent": "product_agent"}
-        elif any(word in message_content for word in ["rendelés", "szállítás", "státusz", "követés"]):
-            return {**state, "current_agent": "order_agent"}
-        elif any(word in message_content for word in ["ajánlás", "javaslat", "hasonló", "népszerű"]):
-            return {**state, "current_agent": "recommendation_agent"}
-        elif any(word in message_content for word in ["kedvezmény", "akció", "promóció", "hírlevél"]):
-            return {**state, "current_agent": "marketing_agent"}
+        if any(word in message_content for word in ["termék", "telefon", "ár", "készlet", "specifikáció", "leírás", "márka"]):
+            return "product_agent"
+        elif any(word in message_content for word in ["rendelés", "szállítás", "státusz", "követés", "tracking", "delivery"]):
+            return "order_agent"
+        elif any(word in message_content for word in ["ajánl", "ajánlat", "hasonló", "népszerű", "trend", "preferencia", "kedvenc", "mit vegyek"]):
+            return "recommendation_agent"
+        elif any(word in message_content for word in ["kedvezmény", "akció", "promóció", "hírlevél", "newsletter"]):
+            return "marketing_agent"
         else:
-            return {**state, "current_agent": "general_agent"}
+            return "general_agent"
             
     except Exception as e:
         # Fallback to general agent on error
-        return {**state, "current_agent": "general_agent"}
+        return "general_agent"
 
 
 # EGYSZERŰSÍTETT AGENT HÍVÁSOK - LangGraph dokumentáció szerint
@@ -457,10 +458,54 @@ async def call_order_agent(state: AgentState) -> AgentState:
 
 
 async def call_recommendation_agent(state: AgentState) -> AgentState:
-    """Recommendation agent hívása LangGraph workflow-ban."""
+    """Recommendation Agent hívása LangGraph workflow-ban."""
     try:
         last_message = state["messages"][-1].content
-        response_text = await handle_recommendation_query_simple(last_message)
+        
+        # Recommendation Agent létrehozása és hívása
+        recommendation_agent = create_recommendation_agent()
+        
+        # Mock dependencies (fejlesztési célokra)
+        from ..agents.recommendations.agent import RecommendationDependencies
+        from ..config.security_prompts import SecurityContext
+        from ..config.audit_logging import SecurityAuditLogger
+        
+        # Mock implementations for development
+        class MockSupabaseClient:
+            async def table(self, name):
+                return self
+            async def select(self, *args):
+                return self
+            async def eq(self, field, value):
+                return self
+            async def execute(self):
+                return {"data": []}
+        
+        class MockVectorDB:
+            async def similarity_search(self, product_id, limit):
+                return []
+            async def personalized_search(self, user_id, preferences, limit):
+                return []
+        
+        deps = RecommendationDependencies(
+            supabase_client=MockSupabaseClient(),
+            vector_db=MockVectorDB(),
+            user_context=state.get("user_context", {}),
+            security_context=SecurityContext(
+                user_id=state.get("user_context", {}).get("user_id", "unknown"),
+                session_id=state.get("user_context", {}).get("session_id", "unknown"),
+                security_level="medium",
+                gdpr_compliant=True
+            ),
+            audit_logger=SecurityAuditLogger()
+        )
+        
+        # Agent hívása
+        if hasattr(recommendation_agent, 'run'):
+            result = await recommendation_agent.run(last_message, deps)
+            response_text = result.message if hasattr(result, 'message') else str(result)
+        else:
+            response_text = await handle_recommendation_query_simple(last_message)
         
         response = AIMessage(content=response_text)
         state["messages"].append(response)
@@ -588,10 +633,10 @@ def create_langgraph_workflow() -> StateGraph:
     # Add edges - START -> route_message
     workflow.add_edge(START, "route_message")
     
-    # Add conditional edges from route_message based on current_agent
+    # Add conditional edges from route_message based on routing function
     workflow.add_conditional_edges(
         "route_message",
-        lambda state: state.get("current_agent", "general_agent"),
+        route_message,  # Function that returns the next node name
         {
             "product_agent": "product_agent",
             "order_agent": "order_agent", 

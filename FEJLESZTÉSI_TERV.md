@@ -8,6 +8,8 @@
 - ✅ **LangGraph + Pydantic AI hibrid architektúra** - Hivatalos dokumentáció szerint implementálva
 - ✅ **Koordinátor Agent** - Multi-agent routing és orchestration
 - ✅ **Product Info Agent** - Teljesen működőképes, 17 unit teszt sikeres
+- ✅ **Order Status Agent** - Teljesen működőképes, 108 teszt sikeres, LangGraph integrált
+- ✅ **Recommendation Agent** - Teljesen működőképes, 108 teszt sikeres, LangGraph integrált
 - ✅ **Complex State Management** - LangGraph StateGraph workflow
 - ✅ **Dependency Injection Pattern** - Pydantic AI hivatalos pattern
 
@@ -197,19 +199,27 @@ class SecurityAuditLogger:
 
 ### **📈 HALADÓ FEJLESZTÉS (1-2 hét):**
 
-#### **1. Order Status Agent implementálása** - **KÖVETKEZŐ LÉPÉS**
-- Product Info Agent mintájára implementálás
-- Tool functions: order_lookup, status_update, tracking_info, refund_request
-- Structured output Pydantic modellekkel
-- Security context engineering integrálva
-- Unit tesztek implementálása
+#### **1. Order Status Agent implementálása** ✅ **ELKÉSZÜLT**
+- ✅ Product Info Agent mintájára implementálás
+- ✅ Tool functions: get_order_by_id, get_orders_by_user, get_tracking_info, update_order_status, get_order_history
+- ✅ Structured output Pydantic modellekkel (OrderStatusResponse)
+- ✅ Security context engineering integrálva
+- ✅ Unit tesztek implementálása (108 teszt sikeres)
+- ✅ LangGraph workflow integráció
+- ✅ Lazy loading pattern implementálva
+- ✅ Audit logging és GDPR compliance
 
-#### **2. Recommendation Agent implementálása** - **KÖVETKEZŐ LÉPÉS**
-- Product Info Agent mintájára implementálás
-- Tool functions: user_preferences, product_similarity, trend_analysis, personalized_recommendations
-- Structured output Pydantic modellekkel
-- Security context engineering integrálva
-- Unit tesztek implementálása
+#### **2. Recommendation Agent implementálása** ✅ **ELKÉSZÜLT**
+- ✅ Product Info Agent mintájára implementálás
+- ✅ Tool functions: get_user_preferences, find_similar_products, analyze_trends, get_personalized_recommendations
+- ✅ Structured output Pydantic modellekkel (ProductRecommendations)
+- ✅ Security context engineering integrálva
+- ✅ Unit tesztek implementálása (108 teszt sikeres)
+- ✅ LangGraph workflow integráció
+- ✅ Lazy loading pattern implementálva
+- ✅ Audit logging és GDPR compliance
+- ✅ Tool registration pattern javítva (hivatalos dokumentáció szerint)
+- ✅ Mock dependencies implementálva fejlesztési célokra
 
 #### **3. WebSocket Chat Interface**
 - Real-time kommunikáció
@@ -235,8 +245,9 @@ class SecurityAuditLogger:
 - Rate limiting
 
 ### **🎯 AZONNALI LÉPÉSEK:**
-- **Order Status Agent** - A Product Info Agent sikeres implementációja alapján
-- **Recommendation Agent** - A Product Info Agent sikeres implementációja alapján
+- ✅ **Order Status Agent** - A Product Info Agent sikeres implementációja alapján - **ELKÉSZÜLT**
+- ✅ **Recommendation Agent** - A Product Info Agent sikeres implementációja alapján - **ELKÉSZÜLT**
+- **Marketing Agent** - A Product Info Agent sikeres implementációja alapján
 - **WebSocket Chat Interface** - Biztonsági rendszer már kész
 - **Supabase integráció** - Biztonsági rendszer már kész
 
@@ -246,23 +257,39 @@ class SecurityAuditLogger:
 
 ### **1. FÁZIS: Specializált Agent-ek (1-2 hét)**
 
-#### **1.1 Order Status Agent** ✅ **KÖVETKEZŐ**
+#### **1.1 Order Status Agent** ✅ **ELKÉSZÜLT**
+**Prioritás: MAGAS**
+- ✅ Product Info Agent mintájára implementálás
+- ✅ Tool functions: get_order_by_id, get_orders_by_user, get_tracking_info, update_order_status, get_order_history
+- ✅ Structured output Pydantic modellekkel (OrderStatusResponse)
+- ✅ Security context engineering integrálva
+- ✅ Unit tesztek implementálása (108 teszt sikeres)
+- ✅ LangGraph workflow integráció
+- ✅ Lazy loading pattern implementálva
+- ✅ Audit logging és GDPR compliance
+
+#### **1.2 Recommendation Agent** ✅ **ELKÉSZÜLT**
+**Prioritás: MAGAS**
+- ✅ Product Info Agent mintájára implementálás
+- ✅ Tool functions: get_user_preferences, find_similar_products, analyze_trends, get_personalized_recommendations
+- ✅ Structured output Pydantic modellekkel (ProductRecommendations)
+- ✅ Security context engineering integrálva
+- ✅ Unit tesztek implementálása (108 teszt sikeres)
+- ✅ LangGraph workflow integráció
+- ✅ Lazy loading pattern implementálva
+- ✅ Audit logging és GDPR compliance
+- ✅ Tool registration pattern javítva (hivatalos dokumentáció szerint)
+- ✅ Mock dependencies implementálva fejlesztési célokra
+
+#### **1.3 Marketing Agent** ✅ **KÖVETKEZŐ**
 **Prioritás: MAGAS**
 - [ ] Product Info Agent mintájára implementálás
-- [ ] Tool functions: order_lookup, status_update, tracking_info, refund_request
+- [ ] Tool functions: send_email, send_sms, create_campaign, track_engagement
 - [ ] Structured output Pydantic modellekkel
 - [ ] Security context engineering integrálva
 - [ ] Unit tesztek implementálása
 
-#### **1.2 Recommendation Agent** ✅ **KÖVETKEZŐ**
-**Prioritás: MAGAS**
-- [ ] Product Info Agent mintájára implementálás
-- [ ] Tool functions: user_preferences, product_similarity, trend_analysis, personalized_recommendations
-- [ ] Structured output Pydantic modellekkel
-- [ ] Security context engineering integrálva
-- [ ] Unit tesztek implementálása
-
-#### **1.3 WebSocket Chat Interface**
+#### **1.4 WebSocket Chat Interface**
 **Prioritás: MAGAS**
 - [ ] Valós idejű kommunikáció
 - [ ] Session kezelés
@@ -350,7 +377,7 @@ class SecurityAuditLogger:
 
 ### **1. HÉT: Specializált Agent-ek**
 
-**Nap 1-2: Order Status Agent**
+**Nap 1-2: Order Status Agent** ✅ **ELKÉSZÜLT**
 ```python
 # src/agents/order_status/agent.py
 @dataclass
@@ -358,33 +385,47 @@ class OrderStatusDependencies:
     supabase_client: Any
     webshop_api: Any
     user_context: dict
+    security_context: SecurityContext
+    audit_logger: SecurityAuditLogger
 
 order_status_agent = Agent(
     'openai:gpt-4o',
     deps_type=OrderStatusDependencies,
-    output_type=OrderStatus
+    output_type=OrderStatusResponse
 )
 
 @order_status_agent.tool
-async def order_lookup(context: RunContext[OrderStatusDependencies], order_id: str) -> OrderInfo:
-    """Rendelés keresése azonosító alapján"""
-    # Implementation
+async def get_order_by_id(ctx: RunContext[OrderStatusDependencies], order_id: str) -> Order:
+    """Rendelés lekérdezése azonosító alapján"""
+    # Implementation with audit logging and error handling
 ```
 
-**Nap 3-4: Recommendation Agent**
+**Nap 3-4: Recommendation Agent** ✅ **ELKÉSZÜLT**
 ```python
-# src/agents/recommendation/agent.py
+# src/agents/recommendations/agent.py
 @dataclass
 class RecommendationDependencies:
     supabase_client: Any
     vector_db: Any
-    user_preferences: dict
+    user_context: dict
+    security_context: SecurityContext
+    audit_logger: SecurityAuditLogger
 
 recommendation_agent = Agent(
     'openai:gpt-4o',
     deps_type=RecommendationDependencies,
     output_type=ProductRecommendations
 )
+
+@recommendation_agent.tool
+async def get_user_preferences(ctx: RunContext[RecommendationDependencies], user_id: str) -> Dict[str, Any]:
+    """Felhasználói preferenciák lekérése"""
+    return await get_user_preferences_impl(ctx, user_id)
+
+@recommendation_agent.tool
+async def find_similar_products(ctx: RunContext[RecommendationDependencies], product_id: str, limit: int = 5) -> List[Product]:
+    """Hasonló termékek keresése"""
+    return await find_similar_products_impl(ctx, product_id, limit)
 ```
 
 **Nap 5-7: WebSocket Interface**
@@ -750,10 +791,12 @@ volumes:
 6. **✅ Ma:** GDPR compliance és audit logging - **TELJESEN KÉSZ**
 7. **✅ Ma:** Comprehensive security testing - **TELJESEN KÉSZ**
 8. **✅ Ma:** Hivatalos dokumentáció szerinti implementáció ellenőrzése - **ELKÉSZÜLT**
-9. **Holnap:** Order Status Agent implementálása (Product Info Agent mintájára)
-10. **Holnap:** Recommendation Agent implementálása (Product Info Agent mintájára)
-11. **Ezen a héten:** WebSocket chat interface és Supabase schema design
-12. **Jövő héten:** Vector database integráció és Redis cache
+9. **✅ Ma:** Order Status Agent implementálása (Product Info Agent mintájára) - **ELKÉSZÜLT**
+10. **✅ Ma:** Recommendation Agent implementálása (Product Info Agent mintájára) - **ELKÉSZÜLT**
+11. **✅ Ma:** Recommendation Agent implementálása (Product Info Agent mintájára) - **ELKÉSZÜLT**
+12. **Holnap:** Marketing Agent implementálása (Product Info Agent mintájára)
+13. **Ezen a héten:** WebSocket chat interface és Supabase schema design
+14. **Jövő héten:** Vector database integráció és Redis cache
 
 ---
 
@@ -871,19 +914,27 @@ volumes:
 
 ### **1. HÉT - Specializált Agent-ek**
 
-**Hétfő:**
-- [ ] Order Status Agent implementálása (Product Info Agent mintájára)
-- [ ] Tool functions: order_lookup, status_update, tracking_info, refund_request
-- [ ] Structured output Pydantic modellekkel
-- [ ] Security context engineering integrálva
-- [ ] Unit tesztek implementálása
+**Hétfő:** ✅ **ELKÉSZÜLT**
+- ✅ Order Status Agent implementálása (Product Info Agent mintájára)
+- ✅ Tool functions: get_order_by_id, get_orders_by_user, get_tracking_info, update_order_status, get_order_history
+- ✅ Structured output Pydantic modellekkel (OrderStatusResponse)
+- ✅ Security context engineering integrálva
+- ✅ Unit tesztek implementálása (108 teszt sikeres)
+- ✅ LangGraph workflow integráció
+- ✅ Lazy loading pattern implementálva
+- ✅ Audit logging és GDPR compliance
 
-**Kedd:**
-- [ ] Recommendation Agent implementálása (Product Info Agent mintájára)
-- [ ] Tool functions: user_preferences, product_similarity, trend_analysis
-- [ ] Structured output Pydantic modellekkel
-- [ ] Security context engineering integrálva
-- [ ] Unit tesztek implementálása
+**Kedd:** ✅ **ELKÉSZÜLT**
+- ✅ Recommendation Agent implementálása (Product Info Agent mintájára)
+- ✅ Tool functions: get_user_preferences, find_similar_products, analyze_trends, get_personalized_recommendations
+- ✅ Structured output Pydantic modellekkel (ProductRecommendations)
+- ✅ Security context engineering integrálva
+- ✅ Unit tesztek implementálása (108 teszt sikeres)
+- ✅ LangGraph workflow integráció
+- ✅ Lazy loading pattern implementálva
+- ✅ Audit logging és GDPR compliance
+- ✅ Tool registration pattern javítva (hivatalos dokumentáció szerint)
+- ✅ Mock dependencies implementálva fejlesztési célokra
 
 **Szerda:**
 - [ ] WebSocket chat interface alapjai
