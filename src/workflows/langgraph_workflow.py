@@ -15,26 +15,12 @@ from ..utils.state_management import (
     update_state_with_error,
     finalize_state
 )
-from ..agents.product_info.agent import (
-    call_product_info_agent,
-    ProductInfoDependencies
-)
-from ..agents.order_status.agent import (
-    call_order_status_agent,
-    OrderStatusDependencies
-)
-from ..agents.recommendations.agent import (
-    call_recommendation_agent,
-    RecommendationDependencies
-)
-from ..agents.marketing.agent import (
-    call_marketing_agent,
-    MarketingDependencies
-)
-from ..agents.general.agent import (
-    call_general_agent,
-    GeneralDependencies
-)
+# Import agent functions
+from ..agents.product_info.agent import call_product_info_agent, ProductInfoDependencies
+from ..agents.order_status.agent import call_order_status_agent, OrderStatusDependencies
+from ..agents.recommendations.agent import call_recommendation_agent, RecommendationDependencies
+from ..agents.marketing.agent import call_marketing_agent, MarketingDependencies
+from ..agents.general.agent import call_general_agent, GeneralDependencies
 # Security imports
 from ..config.security import get_threat_detector, InputValidator
 from ..config.gdpr_compliance import get_gdpr_compliance, ConsentType, DataCategory
@@ -156,65 +142,68 @@ async def _validate_gdpr_consent(
         return True  # Allow on error (fail open for development)
 
 
-    async def call_product_agent(state: LangGraphState) -> LangGraphState:
-        """Product agent hívása LangGraph workflow-ban."""
-        try:
-            # Security validation
-            if not _validate_security_context(state):
-                error_response = AIMessage(content="Biztonsági hiba: Hiányzó biztonsági kontextus.")
-                state["messages"].append(error_response)
-                return state
-            
-            # GDPR consent check
-            if not await _validate_gdpr_consent(state, ConsentType.FUNCTIONAL, DataCategory.PERSONAL):
-                error_response = AIMessage(content="Sajnálom, ehhez a funkcióhoz szükségem van a hozzájárulásodra.")
-                state["messages"].append(error_response)
-                return state
-            
-            # Get the last message
-            last_message = state["messages"][-1].content
-            
-            # Create dependencies
-            deps = ProductInfoDependencies(
-                supabase_client=state.get("user_context", {}).get("supabase_client"),
-                webshop_api=state.get("user_context", {}).get("webshop_api"),
-                user_context=state.get("user_context", {}),
-                security_context=state.get("security_context"),
-                audit_logger=state.get("audit_logger")
-            )
-            
-            # Call Pydantic AI agent
-            result = await call_product_info_agent(last_message, deps)
-            
-            # Audit logging
-            audit_logger = state.get("audit_logger")
-            if audit_logger:
-                await audit_logger.log_data_access(
-                    user_id=state.get("user_context", {}).get("user_id", "anonymous"),
-                    data_type="product_info",
-                    operation="query",
-                    success=True
-                )
-            
-            # Update state with response
-            state = update_state_with_response(
-                state=state,
-                response_text=result.response_text,
-                agent_name="product_agent",
-                confidence=result.confidence,
-                metadata={
-                    "category": result.category,
-                    "product_info": result.product_info.dict() if result.product_info else None,
-                    "search_results": result.search_results.dict() if result.search_results else None,
-                    **result.metadata
-                }
-            )
-            
+async def call_product_agent(state: LangGraphState) -> LangGraphState:
+    """Product agent hívása LangGraph workflow-ban."""
+    try:
+        # Security validation
+        if not _validate_security_context(state):
+            error_response = AIMessage(content="Biztonsági hiba: Hiányzó biztonsági kontextus.")
+            state["messages"].append(error_response)
             return state
-            
-        except Exception as e:
-            # Error handling
-            state = update_state_with_error(
+        
+        # GDPR consent check
+        if not await _validate_gdpr_consent(state, ConsentType.FUNCTIONAL, DataCategory.PERSONAL):
+            error_response = AIMessage(content="Sajnálom, ehhez a funkcióhoz szükségem van a hozzájárulásodra.")
+            state["messages"].append(error_response)
+            return state
+        
+        # Get the last message
+        last_message = state["messages"][-1].content
+        
+        # Create dependencies
+        deps = ProductInfoDependencies(
+            supabase_client=state.get("user_context", {}).get("supabase_client"),
+            webshop_api=state.get("user_context", {}).get("webshop_api"),
+            user_context=state.get("user_context", {}),
+            security_context=state.get("security_context"),
+            audit_logger=state.get("audit_logger")
+        )
+        
+        # Call Pydantic AI agent
+        result = await call_product_info_agent(last_message, deps)
+        
+        # Audit logging
+        audit_logger = state.get("audit_logger")
+        if audit_logger:
+            await audit_logger.log_data_access(
+                user_id=state.get("user_context", {}).get("user_id", "anonymous"),
+                data_type="product_info",
+                operation="query",
+                success=True
+            )
+        
+        # Update state with response
+        state = update_state_with_response(
+            state=state,
+            response_text=result.response_text,
+            agent_name="product_agent",
+            confidence=result.confidence,
+            metadata={
+                "category": result.category,
+                "product_info": result.product_info.dict() if result.product_info else None,
+                "search_results": result.search_results.dict() if result.search_results else None,
+                **result.metadata
+            }
+        )
+        
+        # Update current agent
+        state["current_agent"] = "product_agent"
+        
+        return state
+        
+    except Exception as e:
+        # Error handling
+        state = update_state_with_error(
             state=state,
             error_message=f"Product agent hiba: {str(e)}",
             agent_name="product_agent"
@@ -276,6 +265,9 @@ async def call_order_agent(state: LangGraphState) -> LangGraphState:
             }
         )
         
+        # Update current agent
+        state["current_agent"] = "order_agent"
+        
         return state
         
     except Exception as e:
@@ -316,7 +308,8 @@ async def call_recommendation_agent(state: LangGraphState) -> LangGraphState:
         )
         
         # Call Pydantic AI agent
-        result = await call_recommendation_agent(last_message, deps)
+        from ..agents.recommendations.agent import call_recommendation_agent as call_recommendation_agent_pydantic
+        result = await call_recommendation_agent_pydantic(last_message, deps)
         
         # Audit logging
         audit_logger = state.get("audit_logger")
@@ -342,6 +335,9 @@ async def call_recommendation_agent(state: LangGraphState) -> LangGraphState:
             }
         )
         
+        # Update current agent
+        state["current_agent"] = "recommendation_agent"
+        
         return state
         
     except Exception as e:
@@ -364,7 +360,7 @@ async def call_marketing_agent(state: LangGraphState) -> LangGraphState:
             return state
         
         # GDPR consent check for marketing
-        if not _validate_gdpr_consent(state, ConsentType.MARKETING, DataCategory.MARKETING):
+        if not await _validate_gdpr_consent(state, ConsentType.MARKETING, DataCategory.MARKETING):
             error_response = AIMessage(content="Sajnálom, a marketing funkciókhoz szükségem van a marketing hozzájárulásodra.")
             state["messages"].append(error_response)
             return state
@@ -382,7 +378,8 @@ async def call_marketing_agent(state: LangGraphState) -> LangGraphState:
         )
         
         # Call Pydantic AI agent
-        result = await call_marketing_agent(last_message, deps)
+        from ..agents.marketing.agent import call_marketing_agent as call_marketing_agent_pydantic
+        result = await call_marketing_agent_pydantic(last_message, deps)
         
         # Audit logging
         audit_logger = state.get("audit_logger")
@@ -408,6 +405,9 @@ async def call_marketing_agent(state: LangGraphState) -> LangGraphState:
             }
         )
         
+        # Update current agent
+        state["current_agent"] = "marketing_agent"
+        
         return state
         
     except Exception as e:
@@ -430,7 +430,7 @@ async def call_general_agent(state: LangGraphState) -> LangGraphState:
             return state
         
         # GDPR consent check for basic functionality
-        if not _validate_gdpr_consent(state, ConsentType.NECESSARY, DataCategory.TECHNICAL):
+        if not await _validate_gdpr_consent(state, ConsentType.NECESSARY, DataCategory.TECHNICAL):
             error_response = AIMessage(content="Sajnálom, a szolgáltatás használatához szükségem van az alapvető hozzájárulásodra.")
             state["messages"].append(error_response)
             return state
@@ -448,7 +448,8 @@ async def call_general_agent(state: LangGraphState) -> LangGraphState:
         )
         
         # Call Pydantic AI agent
-        result = await call_general_agent(last_message, deps)
+        from ..agents.general.agent import call_general_agent as call_general_agent_pydantic
+        result = await call_general_agent_pydantic(last_message, deps)
         
         # Audit logging
         audit_logger = state.get("audit_logger")
@@ -472,6 +473,9 @@ async def call_general_agent(state: LangGraphState) -> LangGraphState:
                 **result.metadata
             }
         )
+        
+        # Update current agent
+        state["current_agent"] = "general_agent"
         
         return state
         

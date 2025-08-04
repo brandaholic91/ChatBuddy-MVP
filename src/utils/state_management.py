@@ -33,26 +33,26 @@ def create_initial_state(
     Returns:
         Inicializált LangGraph state
     """
-    return LangGraphState(
-        messages=[HumanMessage(content=user_message)],
-        current_agent="coordinator",
-        user_context=user_context or {},
-        session_data=session_data or {},
-        error_count=0,
-        retry_attempts=0,
-        security_context=security_context,
-        gdpr_compliance=gdpr_compliance,
-        audit_logger=audit_logger,
-        agent_data={},
-        conversation_history=[],
-        processing_start_time=time.time(),
-        processing_end_time=None,
-        tokens_used=None,
-        cost=None,
-        workflow_step="start",
-        next_agent=None,
-        should_continue=True
-    )
+    return {
+        "messages": [HumanMessage(content=user_message)],
+        "current_agent": "coordinator",
+        "user_context": user_context or {},
+        "session_data": session_data or {},
+        "error_count": 0,
+        "retry_attempts": 0,
+        "security_context": security_context,
+        "gdpr_compliance": gdpr_compliance,
+        "audit_logger": audit_logger,
+        "agent_data": {},
+        "conversation_history": [],
+        "processing_start_time": time.time(),
+        "processing_end_time": None,
+        "tokens_used": None,
+        "cost": None,
+        "workflow_step": "start",
+        "next_agent": None,
+        "should_continue": True
+    }
 
 
 def update_state_with_response(

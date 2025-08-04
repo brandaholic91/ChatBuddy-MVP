@@ -7,7 +7,6 @@ that can be integrated into the LangGraph workflow.
 
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
-from datetime import datetime, timedelta
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent, RunContext
 
@@ -24,38 +23,37 @@ class MarketingDependencies:
     audit_logger: Optional[Any] = None
 
 
-class PromotionInfo(BaseModel):
-    """Promóció információ struktúra."""
+class Promotion(BaseModel):
+    """Promóció struktúra."""
     promotion_id: str = Field(description="Promóció azonosító")
     name: str = Field(description="Promóció neve")
     description: str = Field(description="Promóció leírása")
-    discount_type: str = Field(description="Kedvezmény típusa")
-    discount_value: float = Field(description="Kedvezmény értéke")
-    valid_from: datetime = Field(description="Érvényesség kezdete")
-    valid_until: datetime = Field(description="Érvényesség vége")
-    applicable_products: List[str] = Field(description="Alkalmazható termékek")
-    conditions: Optional[str] = Field(description="Feltételek")
-    code: Optional[str] = Field(description="Kupon kód")
+    discount_percentage: float = Field(description="Kedvezmény százalék")
+    valid_from: str = Field(description="Érvényesség kezdete")
+    valid_until: str = Field(description="Érvényesség vége")
+    minimum_purchase: float = Field(description="Minimum vásárlási érték")
+    applicable_categories: List[str] = Field(description="Alkalmazható kategóriák")
+    code: str = Field(description="Kupon kód")
 
 
-class NewsletterInfo(BaseModel):
-    """Hírlevél információ struktúra."""
+class Newsletter(BaseModel):
+    """Hírlevél struktúra."""
     newsletter_id: str = Field(description="Hírlevél azonosító")
     name: str = Field(description="Hírlevél neve")
     description: str = Field(description="Hírlevél leírása")
-    frequency: str = Field(description="Küldés gyakorisága")
-    categories: List[str] = Field(description="Kategóriák")
-    is_active: bool = Field(description="Aktív-e")
+    frequency: str = Field(description="Küldési gyakoriság")
+    categories: List[str] = Field(description="Érdeklődési körök")
+    is_active: bool = Field(description="Aktív hírlevél")
 
 
 class MarketingResponse(BaseModel):
     """Marketing agent válasz struktúra."""
     response_text: str = Field(description="Agent válasza")
     confidence: float = Field(description="Bizonyosság", ge=0.0, le=1.0)
-    promotions: List[PromotionInfo] = Field(description="Aktív promóciók")
-    newsletters: List[NewsletterInfo] = Field(description="Elérhető hírlevelek")
-    personalized_offers: Optional[List[Dict[str, Any]]] = Field(description="Személyre szabott ajánlatok")
-    metadata: Dict[str, Any] = Field(description="Metaadatok")
+    promotions: List[Promotion] = Field(description="Aktív promóciók", default_factory=list)
+    newsletters: List[Newsletter] = Field(description="Elérhető hírlevelek", default_factory=list)
+    personalized_offers: Dict[str, Any] = Field(description="Személyre szabott ajánlatok", default_factory=dict)
+    metadata: Dict[str, Any] = Field(description="Metaadatok", default_factory=dict)
 
 
 def create_marketing_agent() -> Agent:
@@ -71,327 +69,248 @@ def create_marketing_agent() -> Agent:
         output_type=MarketingResponse,
         system_prompt=(
             "Te egy marketing ügynök vagy a ChatBuddy webshop chatbot-ban. "
-            "Feladatod a promóciók, kedvezmények és marketing ajánlatok kezelése. "
+            "Feladatod a promóciók, kedvezmények és hírlevelek kezelése. "
             "Válaszolj magyarul, barátságosan és vonzóan. "
             "Használd a megfelelő tool-okat a marketing információk lekéréséhez. "
-            "Mindig tartsd szem előtt a biztonsági protokollokat és a GDPR megfelelőséget."
+            "Mindig tartsd szem előtt a GDPR megfelelőséget és a marketing hozzájárulásokat. "
+            "Ne küldj marketing tartalmat hozzájárulás nélkül."
         )
     )
     
     @agent.tool
     async def get_active_promotions(
         ctx: RunContext[MarketingDependencies],
-        category: Optional[str] = None,
-        limit: int = 10
-    ) -> List[PromotionInfo]:
+        category: Optional[str] = None
+    ) -> List[Promotion]:
         """
         Aktív promóciók lekérése.
         
         Args:
-            category: Kategória szűrő
-            limit: Eredmények száma
+            category: Kategória (opcionális)
             
         Returns:
-            Aktív promóciók listája
+            Aktív promóciók
         """
         try:
-            # Mock implementáció fejlesztési célokra
-            # TODO: Implementálni valós promóciók lekérést
+            # Mock implementation for development
+            # TODO: Implement actual promotions retrieval
             
-            # Security validation
-            if ctx.deps.security_context:
-                # TODO: Implementálni security check-et
-                pass
-            
-            # GDPR compliance check
-            if ctx.deps.audit_logger:
-                # TODO: Implementálni audit logging-ot
-                pass
-            
-            # Mock active promotions data
+            # Mock active promotions
             active_promotions = [
-                {
-                    "promotion_id": "PROMO_001",
-                    "name": "Telefonok 20% kedvezmény",
-                    "description": "Minden telefon 20% kedvezménnyel",
-                    "discount_type": "percentage",
-                    "discount_value": 20.0,
-                    "valid_from": datetime.now() - timedelta(days=7),
-                    "valid_until": datetime.now() + timedelta(days=7),
-                    "applicable_products": ["PHONE_001", "PHONE_002", "PHONE_003"],
-                    "conditions": "Minimum vásárlási érték: 100.000 Ft",
-                    "code": "TELEFON20"
-                },
-                {
-                    "promotion_id": "PROMO_002",
-                    "name": "Ingyenes szállítás",
-                    "description": "Ingyenes szállítás minden rendelésre",
-                    "discount_type": "shipping",
-                    "discount_value": 100.0,
-                    "valid_from": datetime.now() - timedelta(days=3),
-                    "valid_until": datetime.now() + timedelta(days=14),
-                    "applicable_products": ["ALL"],
-                    "conditions": "Minimum vásárlási érték: 50.000 Ft",
-                    "code": "INGYENES"
-                },
-                {
-                    "promotion_id": "PROMO_003",
-                    "name": "Tablet kupon",
-                    "description": "Tabletek 15% kedvezménnyel",
-                    "discount_type": "percentage",
-                    "discount_value": 15.0,
-                    "valid_from": datetime.now() - timedelta(days=1),
-                    "valid_until": datetime.now() + timedelta(days=30),
-                    "applicable_products": ["TABLET_001", "TABLET_002"],
-                    "conditions": "Csak regisztrált felhasználóknak",
-                    "code": "TABLET15"
-                }
+                Promotion(
+                    promotion_id="PROMO001",
+                    name="Telefon kedvezmény",
+                    description="20% kedvezmény minden telefonra",
+                    discount_percentage=20.0,
+                    valid_from="2024-12-01",
+                    valid_until="2024-12-31",
+                    minimum_purchase=100000.0,
+                    applicable_categories=["Telefon"],
+                    code="TELEFON20"
+                ),
+                Promotion(
+                    promotion_id="PROMO002",
+                    name="Laptop akció",
+                    description="15% kedvezmény laptopokra",
+                    discount_percentage=15.0,
+                    valid_from="2024-12-15",
+                    valid_until="2024-12-25",
+                    minimum_purchase=200000.0,
+                    applicable_categories=["Laptop"],
+                    code="LAPTOP15"
+                ),
+                Promotion(
+                    promotion_id="PROMO003",
+                    name="Általános kedvezmény",
+                    description="10% kedvezmény minden termékre",
+                    discount_percentage=10.0,
+                    valid_from="2024-12-01",
+                    valid_until="2024-12-31",
+                    minimum_purchase=50000.0,
+                    applicable_categories=["Telefon", "Laptop", "Tablet", "Kiegészítő"],
+                    code="MINDEN10"
+                )
             ]
             
             # Filter by category if specified
             if category:
                 active_promotions = [
-                    promo for promo in active_promotions 
-                    if category in promo.get("applicable_products", []) or "ALL" in promo.get("applicable_products", [])
+                    p for p in active_promotions 
+                    if category in p.applicable_categories
                 ]
             
-            return [PromotionInfo(**promo) for promo in active_promotions[:limit]]
+            return active_promotions
             
         except Exception as e:
-            # TODO: Implementálni error handling-et
-            raise Exception(f"Hiba az aktív promóciók lekérésekor: {str(e)}")
+            # Return empty list on error
+            return []
     
     @agent.tool
     async def get_available_newsletters(
         ctx: RunContext[MarketingDependencies]
-    ) -> List[NewsletterInfo]:
+    ) -> List[Newsletter]:
         """
         Elérhető hírlevelek lekérése.
         
         Returns:
-            Hírlevelek listája
+            Elérhető hírlevelek
         """
         try:
-            # Mock implementáció fejlesztési célokra
-            # TODO: Implementálni valós hírlevelek lekérést
+            # Mock implementation for development
+            # TODO: Implement actual newsletters retrieval
             
-            # Mock newsletters data
+            # Mock available newsletters
             newsletters = [
-                {
-                    "newsletter_id": "NEWS_001",
-                    "name": "Heti akciók",
-                    "description": "Hetente frissülő akciók és kedvezmények",
-                    "frequency": "weekly",
-                    "categories": ["telefon", "tablet", "laptop"],
-                    "is_active": True
-                },
-                {
-                    "newsletter_id": "NEWS_002",
-                    "name": "Új termékek",
-                    "description": "Legújabb termékek és bemutatók",
-                    "frequency": "monthly",
-                    "categories": ["telefon", "tablet", "laptop", "accessories"],
-                    "is_active": True
-                },
-                {
-                    "newsletter_id": "NEWS_003",
-                    "name": "Technológiai hírek",
-                    "description": "Technológiai hírek és trendek",
-                    "frequency": "biweekly",
-                    "categories": ["tech_news", "reviews"],
-                    "is_active": True
-                }
+                Newsletter(
+                    newsletter_id="NEWS001",
+                    name="Technológiai hírek",
+                    description="A legfrissebb technológiai hírek és trendek",
+                    frequency="hetente",
+                    categories=["technológia", "hírek"],
+                    is_active=True
+                ),
+                Newsletter(
+                    newsletter_id="NEWS002",
+                    name="Kedvezmények és akciók",
+                    description="Exkluzív kedvezmények és promóciók",
+                    frequency="havonta",
+                    categories=["kedvezmények", "akciók"],
+                    is_active=True
+                ),
+                Newsletter(
+                    newsletter_id="NEWS003",
+                    name="Új termékek",
+                    description="Új termékek és bemutatók",
+                    frequency="havonta",
+                    categories=["új termékek", "bemutatók"],
+                    is_active=True
+                )
             ]
             
-            return [NewsletterInfo(**newsletter) for newsletter in newsletters]
+            return newsletters
             
         except Exception as e:
-            # TODO: Implementálni error handling-et
-            raise Exception(f"Hiba a hírlevelek lekérésekor: {str(e)}")
+            # Return empty list on error
+            return []
     
     @agent.tool
     async def get_personalized_offers(
-        ctx: RunContext[MarketingDependencies],
-        user_id: str,
-        limit: int = 5
-    ) -> List[Dict[str, Any]]:
+        ctx: RunContext[MarketingDependencies]
+    ) -> Dict[str, Any]:
         """
         Személyre szabott ajánlatok lekérése.
         
-        Args:
-            user_id: Felhasználói azonosító
-            limit: Eredmények száma
-            
         Returns:
-            Személyre szabott ajánlatok listája
+            Személyre szabott ajánlatok
         """
         try:
-            # Mock implementáció fejlesztési célokra
-            # TODO: Implementálni valós személyre szabott ajánlatokat
+            # Mock implementation for development
+            # TODO: Implement actual personalized offers retrieval
             
-            # Security validation
-            if ctx.deps.security_context:
-                # TODO: Implementálni security check-et
-                pass
-            
-            # GDPR compliance check
-            if ctx.deps.audit_logger:
-                # TODO: Implementálni audit logging-ot
-                pass
+            user_id = ctx.deps.user_context.get("user_id", "anonymous")
             
             # Mock personalized offers
-            personalized_offers = [
-                {
-                    "offer_id": "OFFER_001",
-                    "title": "Személyre szabott kedvezmény",
-                    "description": "Különleges kedvezmény a korábbi vásárlásaid alapján",
-                    "discount": 25.0,
-                    "valid_until": datetime.now() + timedelta(days=7),
-                    "reason": "Hűséges vásárló kedvezmény"
-                },
-                {
-                    "offer_id": "OFFER_002",
-                    "title": "Születésnapi ajándék",
-                    "description": "Különleges ajándék a születésnapodra",
-                    "discount": 30.0,
-                    "valid_until": datetime.now() + timedelta(days=30),
-                    "reason": "Születésnapi kedvezmény"
-                }
-            ]
+            personalized_offers = {
+                "special_discount": "VIP10",
+                "discount_percentage": 10.0,
+                "valid_until": "2024-12-31",
+                "recommended_products": [
+                    {
+                        "product_id": "PHONE_001",
+                        "name": "iPhone 15 Pro",
+                        "discount": 50000.0
+                    }
+                ],
+                "loyalty_points": 1500,
+                "next_reward": "Ingyenes szállítás"
+            }
             
-            return personalized_offers[:limit]
+            return personalized_offers
             
         except Exception as e:
-            # TODO: Implementálni error handling-et
-            raise Exception(f"Hiba a személyre szabott ajánlatok lekérésekor: {str(e)}")
+            # Return empty offers on error
+            return {}
+    
+    @agent.tool
+    async def check_marketing_consent(
+        ctx: RunContext[MarketingDependencies]
+    ) -> bool:
+        """
+        Marketing hozzájárulás ellenőrzése.
+        
+        Returns:
+            True ha van hozzájárulás, False ha nincs
+        """
+        try:
+            # Mock implementation for development
+            # TODO: Implement actual consent checking
+            
+            user_id = ctx.deps.user_context.get("user_id", "anonymous")
+            
+            # Mock consent status
+            # In a real implementation, this would check the user's consent status
+            return True
+            
+        except Exception as e:
+            # Return False on error (fail safe)
+            return False
     
     @agent.tool
     async def subscribe_to_newsletter(
         ctx: RunContext[MarketingDependencies],
-        newsletter_id: str,
-        user_id: str,
-        email: str
+        newsletter_id: str
     ) -> Dict[str, Any]:
         """
         Hírlevél feliratkozás.
         
         Args:
             newsletter_id: Hírlevél azonosító
-            user_id: Felhasználói azonosító
-            email: Email cím
             
         Returns:
             Feliratkozás eredménye
         """
         try:
-            # Mock implementáció fejlesztési célokra
-            # TODO: Implementálni valós hírlevél feliratkozást
+            # Mock implementation for development
+            # TODO: Implement actual newsletter subscription
             
-            # Security validation
-            if ctx.deps.security_context:
-                # TODO: Implementálni security check-et
-                pass
-            
-            # GDPR compliance check
-            if ctx.deps.audit_logger:
-                # TODO: Implementálni audit logging-ot
-                pass
+            user_id = ctx.deps.user_context.get("user_id", "anonymous")
             
             # Mock subscription result
-            subscription_result = {
+            result = {
+                "success": True,
                 "newsletter_id": newsletter_id,
-                "user_id": user_id,
-                "email": email,
-                "subscribed": True,
-                "subscription_date": datetime.now(),
-                "message": "Sikeres feliratkozás a hírlevélre"
+                "subscription_date": "2024-12-19",
+                "message": "Sikeresen feliratkoztál a hírlevélre!"
             }
             
-            return subscription_result
+            return result
             
         except Exception as e:
-            # TODO: Implementálni error handling-et
-            raise Exception(f"Hiba a hírlevél feliratkozásakor: {str(e)}")
-    
-    @agent.tool
-    async def apply_promotion_code(
-        ctx: RunContext[MarketingDependencies],
-        code: str,
-        user_id: str
-    ) -> Dict[str, Any]:
-        """
-        Promóciós kód alkalmazása.
-        
-        Args:
-            code: Promóciós kód
-            user_id: Felhasználói azonosító
-            
-        Returns:
-            Kód alkalmazás eredménye
-        """
-        try:
-            # Mock implementáció fejlesztési célokra
-            # TODO: Implementálni valós promóciós kód alkalmazást
-            
-            # Security validation
-            if ctx.deps.security_context:
-                # TODO: Implementálni security check-et
-                pass
-            
-            # GDPR compliance check
-            if ctx.deps.audit_logger:
-                # TODO: Implementálni audit logging-ot
-                pass
-            
-            # Mock code application result
-            code_result = {
-                "code": code,
-                "user_id": user_id,
-                "applied": True,
-                "discount_amount": 20.0,
-                "discount_type": "percentage",
-                "valid_until": datetime.now() + timedelta(days=7),
-                "message": "Promóciós kód sikeresen alkalmazva"
+            # Return error result
+            return {
+                "success": False,
+                "error": str(e),
+                "message": "Hiba történt a feliratkozás során."
             }
-            
-            return code_result
-            
-        except Exception as e:
-            # TODO: Implementálni error handling-et
-            raise Exception(f"Hiba a promóciós kód alkalmazásakor: {str(e)}")
     
     return agent
 
 
+# Convenience function for LangGraph integration
 async def call_marketing_agent(
     message: str,
     dependencies: MarketingDependencies
 ) -> MarketingResponse:
     """
-    Marketing agent hívása.
+    Marketing agent hívása LangGraph workflow-ból.
     
     Args:
         message: Felhasználói üzenet
-        dependencies: Agent függőségei
+        dependencies: Agent függőségek
         
     Returns:
-        Agent válasza
+        Marketing agent válasz
     """
-    try:
-        # Agent létrehozása
-        agent = create_marketing_agent()
-        
-        # Agent futtatása
-        result = await agent.run(message, deps=dependencies)
-        
-        return result.output
-        
-    except Exception as e:
-        # Error handling
-        return MarketingResponse(
-            response_text=f"Sajnálom, hiba történt a marketing információk lekérésekor: {str(e)}",
-            confidence=0.0,
-            promotions=[],
-            newsletters=[],
-            metadata={"error": str(e)}
-        ) 
+    agent = create_marketing_agent()
+    result = await agent.run(message, deps=dependencies)
+    return result.output 

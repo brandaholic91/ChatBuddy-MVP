@@ -27,9 +27,9 @@ class GeneralResponse(BaseModel):
     """General agent válasz struktúra."""
     response_text: str = Field(description="Agent válasza")
     confidence: float = Field(description="Bizonyosság", ge=0.0, le=1.0)
-    suggested_actions: Optional[List[str]] = Field(description="Javasolt műveletek")
-    help_topics: Optional[List[str]] = Field(description="Segítség témák")
-    metadata: Dict[str, Any] = Field(description="Metaadatok")
+    suggested_actions: Optional[List[str]] = Field(description="Javasolt műveletek", default=None)
+    help_topics: Optional[List[str]] = Field(description="Segítség témák", default=None)
+    metadata: Dict[str, Any] = Field(description="Metaadatok", default_factory=dict)
 
 
 def create_general_agent() -> Agent:

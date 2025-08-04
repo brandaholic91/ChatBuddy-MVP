@@ -519,5 +519,21 @@ def get_gdpr_compliance() -> GDPRComplianceLayer:
     """
     global _gdpr_compliance
     if _gdpr_compliance is None:
-        _gdpr_compliance = GDPRComplianceLayer()
+        # Check if we're in test mode
+        if os.getenv("ENVIRONMENT") == "development" and os.getenv("MOCK_GDPR_CONSENT") == "true":
+            # Use mock GDPR compliance for testing
+            class MockGDPRCompliance(GDPRComplianceLayer):
+                async def check_user_consent(
+                    self, 
+                    user_id: str, 
+                    consent_type: ConsentType,
+                    data_category: DataCategory
+                ) -> bool:
+                    """Mock consent - minden hozzájárulást megadunk teszteléshez."""
+                    print(f"🔐 Mock GDPR Consent: {consent_type.value} - {data_category.value} -> ✅ GRANTED")
+                    return True
+            
+            _gdpr_compliance = MockGDPRCompliance()
+        else:
+            _gdpr_compliance = GDPRComplianceLayer()
     return _gdpr_compliance 

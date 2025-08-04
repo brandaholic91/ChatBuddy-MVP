@@ -30,18 +30,18 @@ class ProductInfo(BaseModel):
     description: str = Field(description="Termék leírása")
     category: str = Field(description="Termék kategóriája")
     availability: str = Field(description="Elérhetőség")
-    specifications: Dict[str, Any] = Field(description="Termék specifikációk")
-    images: List[str] = Field(description="Termék képek")
-    rating: Optional[float] = Field(description="Értékelés", ge=0.0, le=5.0)
-    review_count: Optional[int] = Field(description="Értékelések száma", ge=0)
+    specifications: Dict[str, Any] = Field(description="Termék specifikációk", default_factory=dict)
+    images: List[str] = Field(description="Termék képek", default_factory=list)
+    rating: Optional[float] = Field(description="Értékelés", ge=0.0, le=5.0, default=None)
+    review_count: Optional[int] = Field(description="Értékelések száma", ge=0, default=None)
 
 
 class ProductSearchResult(BaseModel):
     """Termék keresési eredmény."""
-    products: List[ProductInfo] = Field(description="Talált termékek")
+    products: List[ProductInfo] = Field(description="Talált termékek", default_factory=list)
     total_count: int = Field(description="Összes találat száma")
     search_query: str = Field(description="Keresési lekérdezés")
-    filters_applied: Dict[str, Any] = Field(description="Alkalmazott szűrők")
+    filters_applied: Dict[str, Any] = Field(description="Alkalmazott szűrők", default_factory=dict)
 
 
 class ProductResponse(BaseModel):
@@ -49,9 +49,9 @@ class ProductResponse(BaseModel):
     response_text: str = Field(description="Agent válasza")
     confidence: float = Field(description="Bizonyosság", ge=0.0, le=1.0)
     category: str = Field(description="Kategória")
-    product_info: Optional[ProductInfo] = Field(description="Termék információ")
-    search_results: Optional[ProductSearchResult] = Field(description="Keresési eredmények")
-    metadata: Dict[str, Any] = Field(description="Metaadatok")
+    product_info: Optional[ProductInfo] = Field(description="Termék információ", default=None)
+    search_results: Optional[ProductSearchResult] = Field(description="Keresési eredmények", default=None)
+    metadata: Dict[str, Any] = Field(description="Metaadatok", default_factory=dict)
 
 
 def create_product_info_agent() -> Agent:
@@ -71,7 +71,8 @@ def create_product_info_agent() -> Agent:
             "Válaszolj magyarul, barátságosan és részletesen. "
             "Használd a megfelelő tool-okat a termék információk lekéréséhez. "
             "Ha nem találsz megfelelő terméket, javasolj alternatívákat. "
-            "Mindig tartsd szem előtt a biztonsági protokollokat és a GDPR megfelelőséget."
+            "Mindig tartsd szem előtt a biztonsági protokollokat és a GDPR megfelelőséget. "
+            "FONTOS: Mindig adj meg egy 'category' mezőt a válaszodban, és használd a tool-okat a termék információk lekéréséhez!"
         )
     )
     
