@@ -5,12 +5,14 @@ This module contains Pydantic models for AI agent management:
 - AgentDecision: Agent decision making
 - AgentResponse: Agent response handling
 - AgentState: Agent state management
+- LangGraphState: Unified LangGraph state management
 """
 
 from datetime import datetime
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, TypedDict
 from enum import Enum
 from pydantic import BaseModel, Field, ConfigDict
+from langchain_core.messages import BaseMessage
 
 
 class AgentType(str, Enum):
@@ -76,6 +78,50 @@ class AgentResponse(BaseModel):
     model_config = ConfigDict(
         validate_assignment=True
     )
+
+
+# ============================================================================
+# LANGGRAPH UNIFIED STATE MANAGEMENT
+# ============================================================================
+
+class LangGraphState(TypedDict):
+    """
+    Egységes LangGraph state management a ChatBuddy MVP projekthez.
+    
+    Ez a state kezeli az összes agent közötti kommunikációt és adatmegosztást
+    a LangGraph workflow-ban.
+    """
+    # Core message handling
+    messages: List[BaseMessage]
+    current_agent: str
+    
+    # User and session context
+    user_context: Dict[str, Any]
+    session_data: Dict[str, Any]
+    
+    # Error handling and retry logic
+    error_count: int
+    retry_attempts: int
+    
+    # Security and compliance
+    security_context: Optional[Any]  # SecurityContext from config
+    gdpr_compliance: Optional[Any]   # GDPR compliance layer
+    audit_logger: Optional[Any]      # Audit logger
+    
+    # Agent-specific data
+    agent_data: Dict[str, Any]       # Agent-specific data storage
+    conversation_history: List[Dict[str, Any]]  # Extended conversation history
+    
+    # Performance and monitoring
+    processing_start_time: Optional[float]
+    processing_end_time: Optional[float]
+    tokens_used: Optional[int]
+    cost: Optional[float]
+    
+    # Workflow control
+    workflow_step: str
+    next_agent: Optional[str]
+    should_continue: bool
 
 
 class AgentState(BaseModel):

@@ -8,23 +8,9 @@ This module contains the Product Info Agent implementation using:
 - Tool-based product search and recommendations
 """
 
-from .agent import ProductInfoAgent, get_product_info_agent
-from .tools import (
-    search_products,
-    get_product_details,
-    get_product_reviews,
-    get_related_products,
-    check_product_availability,
-    get_product_pricing
-)
+from .agent import call_product_info_agent, create_product_info_agent
 
 __all__ = [
-    "ProductInfoAgent",
-    "get_product_info_agent",
-    "search_products",
-    "get_product_details", 
-    "get_product_reviews",
-    "get_related_products",
-    "check_product_availability",
-    "get_product_pricing"
+    "call_product_info_agent",
+    "create_product_info_agent"
 ]

@@ -11,22 +11,22 @@ This module contains specialized AI agents for different customer service scenar
 
 # Agent exports
 from .coordinator import get_coordinator_agent
-from .product_info import get_product_info_agent
-# from .order_status import order_status_agent
-# from .recommendations import recommendations_agent
-# from .marketing import marketing_agent
-
-# Agent instances - lazy loading to avoid OpenAI API key issues
-coordinator_agent = None
-product_info_agent = None
-order_status_agent = None
-recommendations_agent = None
-marketing_agent = None
+from .product_info import call_product_info_agent, create_product_info_agent
+from .order_status import call_order_status_agent, create_order_status_agent
+from .recommendations import call_recommendation_agent, create_recommendation_agent
+from .marketing import call_marketing_agent, create_marketing_agent
+from .general import call_general_agent, create_general_agent
 
 __all__ = [
-    "coordinator_agent",
-    "product_info_agent", 
-    "order_status_agent",
-    "recommendations_agent",
-    "marketing_agent"
+    "get_coordinator_agent",
+    "call_product_info_agent",
+    "create_product_info_agent",
+    "call_order_status_agent", 
+    "create_order_status_agent",
+    "call_recommendation_agent",
+    "create_recommendation_agent",
+    "call_marketing_agent",
+    "create_marketing_agent",
+    "call_general_agent",
+    "create_general_agent"
 ]

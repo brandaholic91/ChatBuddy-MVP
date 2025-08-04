@@ -337,7 +337,7 @@ class CoordinatorAgent:
         self,
         message: str,
         user: Optional[User] = None,
-        session_id: Optional[str] = None
+    session_id: Optional[str] = None
     ) -> AgentResponse:
         """Üzenet feldolgozása LangGraph workflow-val"""
         try:
@@ -520,17 +520,21 @@ async def test_langgraph_workflow_integration():
 
 ## 📋 IMPLEMENTÁCIÓ TERV
 
-### **1. HÉT: Alapvető Refaktorálás**
-- [ ] Architektúra döntés dokumentálása
-- [ ] Egységes state management implementálása
-- [ ] Pydantic AI agent-ek tool-ként implementálása
-- [ ] Alapvető LangGraph workflow létrehozása
+### **1. HÉT: Alapvető Refaktorálás** ✅
+- [x] Architektúra döntés dokumentálása
+- [x] Egységes state management implementálása
+- [x] Pydantic AI agent-ek tool-ként implementálása
+- [x] Alapvető LangGraph workflow létrehozása
 
-### **2. HÉT: Workflow Implementáció**
-- [ ] Routing logic implementálása
-- [ ] Agent node-ok implementálása
-- [ ] Workflow assembly
-- [ ] Koordinátor agent refaktorálása
+**📋 Összefoglaló**: `docs/implementacio_osszefoglalo_1_het.md`
+
+### **2. HÉT: Workflow Implementáció** ✅
+- [x] Routing logic implementálása
+- [x] Agent node-ok implementálása
+- [x] Workflow assembly
+- [x] Koordinátor agent refaktorálása
+
+**📋 Összefoglaló**: `docs/implementacio_osszefoglalo_2_het.md`
 
 ### **3. HÉT: Security és GDPR**
 - [ ] Security context integráció

@@ -1,237 +1,318 @@
 """
-Order Status Agent - Rendelés státusz kezelés és követés
+Order Status Agent - Pydantic AI Tool Implementation for LangGraph.
 
-Ez az agent felelős a rendelések státuszának lekérdezéséért, 
-szállítási információk megjelenítéséért és rendelés követésért.
+This module implements the order status agent as a Pydantic AI tool
+that can be integrated into the LangGraph workflow.
 """
 
+from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
-from datetime import datetime, timezone
-from pydantic_ai import Agent, RunContext
+from datetime import datetime
 from pydantic import BaseModel, Field
+from pydantic_ai import Agent, RunContext
 
-from src.config.security_prompts import SecurityContext
-from src.config.audit_logging import SecurityAuditLogger, SecuritySeverity
-from src.models.order import Order, OrderStatus, OrderItem
-from src.models.user import User
+from ...models.agent import AgentType
 
 
 @dataclass
 class OrderStatusDependencies:
-    """Order Status Agent függőségei"""
-    supabase_client: Any
-    webshop_api: Any
-    user_context: dict
-    security_context: SecurityContext
-    audit_logger: SecurityAuditLogger
+    """Order status agent függőségei."""
+    user_context: Dict[str, Any]
+    supabase_client: Optional[Any] = None
+    webshop_api: Optional[Any] = None
+    security_context: Optional[Any] = None
+    audit_logger: Optional[Any] = None
+
+
+class OrderInfo(BaseModel):
+    """Rendelési információ struktúra."""
+    order_id: str = Field(description="Rendelési azonosító")
+    order_date: datetime = Field(description="Rendelés dátuma")
+    status: str = Field(description="Rendelési státusz")
+    total_amount: float = Field(description="Összeg")
+    currency: str = Field(description="Pénznem", default="HUF")
+    items: List[Dict[str, Any]] = Field(description="Rendelt termékek")
+    shipping_address: Dict[str, Any] = Field(description="Szállítási cím")
+    tracking_number: Optional[str] = Field(description="Követési szám")
+    estimated_delivery: Optional[datetime] = Field(description="Várható szállítás")
+    notes: Optional[str] = Field(description="Megjegyzések")
 
 
 class OrderStatusResponse(BaseModel):
-    """Order Status Agent válasz modell"""
-    message: str = Field(description="Felhasználóbarát válasz üzenet")
-    order_info: Optional[Order] = Field(None, description="Rendelés információk")
-    tracking_info: Optional[Dict[str, Any]] = Field(None, description="Szállítási információk")
-    next_steps: Optional[List[str]] = Field(None, description="Következő lépések")
-    confidence: float = Field(1.0, description="Válasz bizonyossága")
-    metadata: Dict[str, Any] = Field(default_factory=dict, description="Metaadatok")
+    """Order status agent válasz struktúra."""
+    response_text: str = Field(description="Agent válasza")
+    confidence: float = Field(description="Bizonyosság", ge=0.0, le=1.0)
+    order_info: Optional[OrderInfo] = Field(description="Rendelési információ")
+    status_summary: Optional[str] = Field(description="Státusz összefoglaló")
+    next_steps: Optional[List[str]] = Field(description="Következő lépések")
+    metadata: Dict[str, Any] = Field(description="Metaadatok")
 
 
-# Order Status Agent létrehozása (lazy loading)
-_order_status_agent = None
-
-
-# Tool függvények (ezeket később fogjuk regisztrálni)
-async def get_order_by_id(
-    ctx: RunContext[OrderStatusDependencies], 
-    order_id: str
-) -> Order:
-    """Rendelés lekérdezése azonosító alapján"""
-    try:
-        # Supabase lekérdezés
-        response = ctx.deps.supabase_client.table('orders').select('*').eq('id', order_id).execute()
-        
-        if response.data:
-            order_data = response.data[0]
-            return Order(**order_data)
-        else:
-            raise ValueError(f"Rendelés nem található: {order_id}")
-            
-    except Exception as e:
-        await ctx.deps.audit_logger.log_error(
-            "order_lookup_failed",
-            f"Rendelés lekérdezés hiba: {order_id}",
-            ctx.deps.user_context.get('user_id'),
-            ctx.deps.user_context.get('session_id'),
-            "order_status",
-            {"order_id": order_id, "error": str(e)}
-        )
-        raise
-
-
-async def get_orders_by_user(
-    ctx: RunContext[OrderStatusDependencies],
-    user_id: str,
-    limit: int = 10
-) -> List[Order]:
-    """Felhasználó rendeléseinek lekérdezése"""
-    try:
-        response = ctx.deps.supabase_client.table('orders')\
-            .select('*')\
-            .eq('user_id', user_id)\
-            .order('created_at', desc=True)\
-            .limit(limit)\
-            .execute()
-            
-        return [Order(**order) for order in response.data]
-        
-    except Exception as e:
-        await ctx.deps.audit_logger.log_error(
-            "user_orders_lookup_failed", 
-            f"Felhasználó rendelései lekérdezés hiba: {user_id}",
-            ctx.deps.user_context.get('user_id'),
-            ctx.deps.user_context.get('session_id'),
-            "order_status",
-            {"user_id": user_id, "error": str(e)}
-        )
-        raise
-
-
-async def get_tracking_info(
-    ctx: RunContext[OrderStatusDependencies],
-    tracking_number: str
-) -> Dict[str, Any]:
-    """Szállítási információk lekérdezése"""
-    try:
-        # Webshop API hívás szállítási információkhoz
-        tracking_data = await ctx.deps.webshop_api.get_tracking_info(tracking_number)
-        
-        await ctx.deps.audit_logger.log_security_event(
-            "tracking_info_retrieved",
-            SecuritySeverity.LOW,
-            ctx.deps.user_context.get('user_id'),
-            f"SZállítási információk lekérdezve: {tracking_number}",
-            {"tracking_number": tracking_number}
-        )
-        
-        return tracking_data
-        
-    except Exception as e:
-        await ctx.deps.audit_logger.log_error(
-            "tracking_info_failed",
-            f"SZállítási információk hiba: {tracking_number}",
-            ctx.deps.user_context.get('user_id'),
-            ctx.deps.user_context.get('session_id'),
-            "order_status",
-            {"tracking_number": tracking_number, "error": str(e)}
-        )
-        raise
-
-
-async def update_order_status(
-    ctx: RunContext[OrderStatusDependencies],
-    order_id: str,
-    new_status: OrderStatus
-) -> Order:
-    """Rendelés státusz frissítése"""
-    try:
-        # Supabase frissítés
-        response = ctx.deps.supabase_client.table('orders')\
-            .update({"status": new_status.value, "updated_at": datetime.now(timezone.utc).isoformat()})\
-            .eq('id', order_id)\
-            .execute()
-            
-        if response.data:
-            updated_order = Order(**response.data[0])
-            
-            await ctx.deps.audit_logger.log_security_event(
-                "order_status_updated",
-                SecuritySeverity.LOW,
-                ctx.deps.user_context.get('user_id'),
-                f"Rendelés státusz frissítve: {order_id} -> {new_status.value}",
-                {"order_id": order_id, "new_status": new_status.value}
-            )
-            
-            return updated_order
-        else:
-            raise ValueError(f"Rendelés frissítés sikertelen: {order_id}")
-            
-    except Exception as e:
-        await ctx.deps.audit_logger.log_error(
-            "order_status_update_failed",
-            f"Rendelés státusz frissítés hiba: {order_id}",
-            ctx.deps.user_context.get('user_id'),
-            ctx.deps.user_context.get('session_id'),
-            "order_status",
-            {"order_id": order_id, "new_status": new_status.value, "error": str(e)}
-        )
-        raise
-
-
-async def get_order_history(
-    ctx: RunContext[OrderStatusDependencies],
-    order_id: str
-) -> List[Dict[str, Any]]:
-    """Rendelés státusz változások előzménye"""
-    try:
-        response = ctx.deps.supabase_client.table('order_status_history')\
-            .select('*')\
-            .eq('order_id', order_id)\
-            .order('created_at', desc=True)\
-            .execute()
-            
-        return response.data
-        
-    except Exception as e:
-        await ctx.deps.audit_logger.log_error(
-            "order_history_failed",
-            f"Rendelés előzmények hiba: {order_id}",
-            ctx.deps.user_context.get('user_id'),
-            ctx.deps.user_context.get('session_id'),
-            "order_status",
-            {"order_id": order_id, "error": str(e)}
-        )
-        raise
-
-
-# Mock agent fallback (fejlesztési célokra)
-class MockOrderStatusAgent:
-    """Mock Order Status Agent fejlesztési célokra"""
+def create_order_status_agent() -> Agent:
+    """
+    Order status agent létrehozása Pydantic AI-val.
     
-    async def run(self, message: str, deps: OrderStatusDependencies) -> OrderStatusResponse:
-        return OrderStatusResponse(
-            message="Ez egy mock Order Status Agent válasz. A valós implementáció fejlesztés alatt.",
-            confidence=0.5,
-            metadata={"agent_type": "mock_order_status"}
+    Returns:
+        Order status agent
+    """
+    agent = Agent(
+        'openai:gpt-4o',
+        deps_type=OrderStatusDependencies,
+        output_type=OrderStatusResponse,
+        system_prompt=(
+            "Te egy rendelési státusz ügynök vagy a ChatBuddy webshop chatbot-ban. "
+            "Feladatod a rendelésekkel kapcsolatos kérdések megválaszolása. "
+            "Válaszolj magyarul, barátságosan és részletesen. "
+            "Használd a megfelelő tool-okat a rendelési információk lekéréséhez. "
+            "Ha nem találsz megfelelő rendelést, kérj el pontosabb információt. "
+            "Mindig tartsd szem előtt a biztonsági protokollokat és a GDPR megfelelőséget."
         )
-
-
-# Agent factory függvény
-def create_order_status_agent() -> Any:
-    """Order Status Agent létrehozása"""
-    global _order_status_agent
+    )
     
-    if _order_status_agent is None:
+    @agent.tool
+    async def get_order_status(
+        ctx: RunContext[OrderStatusDependencies],
+        order_id: str
+    ) -> OrderInfo:
+        """
+        Rendelési státusz lekérése az adatbázisból.
+        
+        Args:
+            order_id: Rendelési azonosító
+            
+        Returns:
+            Rendelési információ
+        """
         try:
-            # Próbáljuk létrehozni a valós agent-et
-            _order_status_agent = Agent(
-                'openai:gpt-4o',
-                deps_type=OrderStatusDependencies,
-                output_type=OrderStatusResponse,
-                system_prompt="""Te egy rendelés státusz és szállítás követés szakértő vagy. 
-                
-                Feladatod:
-                1. Rendelések státuszának lekérdezése
-                2. Szállítási információk megjelenítése  
-                3. Rendelés követés és frissítések
-                4. Felhasználóbarát válaszok adása
-                
-                Mindig használd a megfelelő eszközöket a pontos információk lekéréséhez.
-                Válaszaid legyenek barátságosak és informatívak."""
-            )
+            # Mock implementáció fejlesztési célokra
+            # TODO: Implementálni valós adatbázis lekérést
+            
+            # Security validation
+            if ctx.deps.security_context:
+                # TODO: Implementálni security check-et
+                pass
+            
+            # GDPR compliance check
+            if ctx.deps.audit_logger:
+                # TODO: Implementálni audit logging-ot
+                pass
+            
+            # Mock order data
+            order_data = {
+                "order_id": order_id,
+                "order_date": datetime.now(),
+                "status": "processing",
+                "total_amount": 29990.0,
+                "currency": "HUF",
+                "items": [
+                    {
+                        "product_id": "PHONE_001",
+                        "name": "Samsung Galaxy S24",
+                        "quantity": 1,
+                        "price": 29990.0
+                    }
+                ],
+                "shipping_address": {
+                    "name": "Teszt Felhasználó",
+                    "street": "Teszt utca 1.",
+                    "city": "Budapest",
+                    "postal_code": "1000",
+                    "country": "Magyarország"
+                },
+                "tracking_number": "TRK123456789",
+                "estimated_delivery": datetime.now(),
+                "notes": "Rendelés feldolgozás alatt"
+            }
+            
+            return OrderInfo(**order_data)
+            
         except Exception as e:
-            # Fallback mock agent teszteléshez
-            print(f"Warning: Could not create Order Status Agent: {e}")
-            _order_status_agent = MockOrderStatusAgent()
+            # TODO: Implementálni error handling-et
+            raise Exception(f"Hiba a rendelési státusz lekérésekor: {str(e)}")
     
-    return _order_status_agent 
+    @agent.tool
+    async def search_orders_by_user(
+        ctx: RunContext[OrderStatusDependencies],
+        user_id: Optional[str] = None,
+        email: Optional[str] = None,
+        limit: int = 10
+    ) -> List[OrderInfo]:
+        """
+        Felhasználó rendeléseinek keresése.
+        
+        Args:
+            user_id: Felhasználói azonosító
+            email: Email cím
+            limit: Eredmények száma
+            
+        Returns:
+            Rendelések listája
+        """
+        try:
+            # Mock implementáció fejlesztési célokra
+            # TODO: Implementálni valós adatbázis lekérést
+            
+            # Security validation
+            if ctx.deps.security_context:
+                # TODO: Implementálni security check-et
+                pass
+            
+            # Mock orders data
+            orders_data = [
+                {
+                    "order_id": "ORD001",
+                    "order_date": datetime.now(),
+                    "status": "delivered",
+                    "total_amount": 29990.0,
+                    "currency": "HUF",
+                    "items": [
+                        {
+                            "product_id": "PHONE_001",
+                            "name": "Samsung Galaxy S24",
+                            "quantity": 1,
+                            "price": 29990.0
+                        }
+                    ],
+                    "shipping_address": {
+                        "name": "Teszt Felhasználó",
+                        "street": "Teszt utca 1.",
+                        "city": "Budapest",
+                        "postal_code": "1000",
+                        "country": "Magyarország"
+                    },
+                    "tracking_number": "TRK123456789",
+                    "estimated_delivery": datetime.now(),
+                    "notes": "Rendelés kézbesítve"
+                }
+            ]
+            
+            return [OrderInfo(**order_data) for order_data in orders_data[:limit]]
+            
+        except Exception as e:
+            # TODO: Implementálni error handling-et
+            raise Exception(f"Hiba a rendelések keresésekor: {str(e)}")
+    
+    @agent.tool
+    async def get_tracking_info(
+        ctx: RunContext[OrderStatusDependencies],
+        tracking_number: str
+    ) -> Dict[str, Any]:
+        """
+        Szállítási követési információk lekérése.
+        
+        Args:
+            tracking_number: Követési szám
+            
+        Returns:
+            Követési információk
+        """
+        try:
+            # Mock implementáció fejlesztési célokra
+            # TODO: Implementálni valós szállítási API hívást
+            
+            # Mock tracking data
+            tracking_data = {
+                "tracking_number": tracking_number,
+                "status": "in_transit",
+                "current_location": "Budapest, Magyarország",
+                "estimated_delivery": datetime.now(),
+                "history": [
+                    {
+                        "timestamp": datetime.now(),
+                        "status": "order_placed",
+                        "location": "Budapest, Magyarország",
+                        "description": "Rendelés feladva"
+                    },
+                    {
+                        "timestamp": datetime.now(),
+                        "status": "in_transit",
+                        "location": "Budapest, Magyarország",
+                        "description": "Szállítás alatt"
+                    }
+                ]
+            }
+            
+            return tracking_data
+            
+        except Exception as e:
+            # TODO: Implementálni error handling-et
+            raise Exception(f"Hiba a követési információk lekérésekor: {str(e)}")
+    
+    @agent.tool
+    async def cancel_order(
+        ctx: RunContext[OrderStatusDependencies],
+        order_id: str,
+        reason: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Rendelés törlése.
+        
+        Args:
+            order_id: Rendelési azonosító
+            reason: Törlés indoka
+            
+        Returns:
+            Törlés eredménye
+        """
+        try:
+            # Mock implementáció fejlesztési célokra
+            # TODO: Implementálni valós rendelés törlést
+            
+            # Security validation
+            if ctx.deps.security_context:
+                # TODO: Implementálni security check-et
+                pass
+            
+            # GDPR compliance check
+            if ctx.deps.audit_logger:
+                # TODO: Implementálni audit logging-ot
+                pass
+            
+            # Mock cancellation result
+            cancellation_result = {
+                "order_id": order_id,
+                "cancelled": True,
+                "cancellation_date": datetime.now(),
+                "refund_processed": False,
+                "message": "Rendelés sikeresen törölve"
+            }
+            
+            return cancellation_result
+            
+        except Exception as e:
+            # TODO: Implementálni error handling-et
+            raise Exception(f"Hiba a rendelés törlésekor: {str(e)}")
+    
+    return agent
+
+
+async def call_order_status_agent(
+    message: str,
+    dependencies: OrderStatusDependencies
+) -> OrderStatusResponse:
+    """
+    Order status agent hívása.
+    
+    Args:
+        message: Felhasználói üzenet
+        dependencies: Agent függőségei
+        
+    Returns:
+        Agent válasza
+    """
+    try:
+        # Agent létrehozása
+        agent = create_order_status_agent()
+        
+        # Agent futtatása
+        result = await agent.run(message, deps=dependencies)
+        
+        return result.output
+        
+    except Exception as e:
+        # Error handling
+        return OrderStatusResponse(
+            response_text=f"Sajnálom, hiba történt a rendelési státusz lekérésekor: {str(e)}",
+            confidence=0.0,
+            metadata={"error": str(e)}
+        ) 

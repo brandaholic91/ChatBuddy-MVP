@@ -1,308 +1,401 @@
 """
-Recommendation Agent - Személyre szabott termékajánlások és trend elemzés
-===============================================================
+Recommendation Agent - Pydantic AI Tool Implementation for LangGraph.
 
-Ez a modul tartalmazza a Recommendation Agent implementációját, amely:
-1. Felhasználói preferenciák elemzése
-2. Hasonló termékek keresése
-3. Trend elemzés
-4. Személyre szabott ajánlatok generálása
-
-Az agent Pydantic AI keretrendszerben épül és LangGraph workflow-ba integrálódik.
+This module implements the recommendation agent as a Pydantic AI tool
+that can be integrated into the LangGraph workflow.
 """
 
+from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
-from datetime import datetime
-from decimal import Decimal
-from pydantic_ai import Agent, RunContext
 from pydantic import BaseModel, Field
+from pydantic_ai import Agent, RunContext
 
-from src.config.security_prompts import SecurityContext
-from src.config.audit_logging import SecurityAuditLogger
-from src.models.product import Product, ProductCategory, ProductStatus
-from src.models.user import User
+from ...models.agent import AgentType
+
 
 @dataclass
 class RecommendationDependencies:
-    """Recommendation Agent függőségei"""
-    supabase_client: Any
-    vector_db: Any
-    user_context: dict
-    security_context: SecurityContext
-    audit_logger: SecurityAuditLogger
+    """Recommendation agent függőségei."""
+    user_context: Dict[str, Any]
+    supabase_client: Optional[Any] = None
+    webshop_api: Optional[Any] = None
+    security_context: Optional[Any] = None
+    audit_logger: Optional[Any] = None
 
-class ProductRecommendations(BaseModel):
-    """Recommendation Agent válasz modell"""
-    message: str = Field(description="Felhasználóbarát válasz üzenet")
-    recommendations: List[Product] = Field(description="Ajánlott termékek listája")
-    reasoning: str = Field(description="Ajánlás indoklása")
-    confidence: float = Field(1.0, description="Ajánlás bizonyossága")
-    metadata: Dict[str, Any] = Field(default_factory=dict, description="Metaadatok")
 
-# Recommendation Agent létrehozása (lazy loading)
-_recommendation_agent = None
+class ProductRecommendation(BaseModel):
+    """Termék ajánlás struktúra."""
+    product_id: str = Field(description="Termék azonosító")
+    name: str = Field(description="Termék neve")
+    price: float = Field(description="Termék ára")
+    category: str = Field(description="Kategória")
+    rating: Optional[float] = Field(description="Értékelés", ge=0.0, le=5.0)
+    review_count: Optional[int] = Field(description="Értékelések száma", ge=0)
+    image_url: Optional[str] = Field(description="Termék kép URL")
+    description: str = Field(description="Termék leírása")
+    confidence_score: float = Field(description="Ajánlás bizonyossága", ge=0.0, le=1.0)
+    reason: str = Field(description="Ajánlás indoka")
 
-# Tool függvények implementációi (ezeket később fogjuk regisztrálni)
-async def get_user_preferences_impl(ctx: RunContext[RecommendationDependencies], user_id: str) -> Dict[str, Any]:
+
+class RecommendationResponse(BaseModel):
+    """Recommendation agent válasz struktúra."""
+    response_text: str = Field(description="Agent válasza")
+    confidence: float = Field(description="Bizonyosság", ge=0.0, le=1.0)
+    recommendations: List[ProductRecommendation] = Field(description="Termék ajánlások")
+    category: Optional[str] = Field(description="Ajánlás kategóriája")
+    user_preferences: Optional[Dict[str, Any]] = Field(description="Felhasználói preferenciák")
+    metadata: Dict[str, Any] = Field(description="Metaadatok")
+
+
+def create_recommendation_agent() -> Agent:
     """
-    Felhasználói preferenciák lekérése
+    Recommendation agent létrehozása Pydantic AI-val.
     
-    Args:
-        ctx: RunContext a függőségekkel
-        user_id: Felhasználó azonosítója
-        
     Returns:
-        Felhasználói preferenciák szótár
+        Recommendation agent
     """
-    try:
-        # TODO: Implement real Supabase query
-        # preferences = await ctx.deps.supabase_client.table('user_preferences').select('*').eq('user_id', user_id).execute()
-        
-        # Mock data for development
-        mock_preferences = {
-            "categories": ["electronics", "books"],
-            "price_range": {"min": 1000, "max": 50000},
-            "brands": ["Apple", "Samsung"],
-            "last_purchases": ["product_123", "product_456"],
-            "viewed_products": ["product_789", "product_101"]
-        }
-        
-        # Audit logging
-        if ctx.deps.audit_logger:
-            await ctx.deps.audit_logger.log_agent_interaction(
-                agent_type="recommendation",
-                user_id=user_id,
-                session_id=ctx.deps.user_context.get('session_id'),
-                query=f"get_user_preferences({user_id})",
-                response=str(mock_preferences)
-            )
-        
-        return mock_preferences
-        
-    except Exception as e:
-        if ctx.deps.audit_logger:
-            await ctx.deps.audit_logger.log_security_event(
-                event_type="error",
-                severity="warning",
-                description=f"Error getting user preferences: {str(e)}",
-                user_id=user_id
-            )
-        return {}
-
-async def find_similar_products_impl(ctx: RunContext[RecommendationDependencies], product_id: str, limit: int = 5) -> List[Product]:
-    """
-    Hasonló termékek keresése
-    
-    Args:
-        ctx: RunContext a függőségekkel
-        product_id: Termék azonosítója
-        limit: Maximum termékek száma
-        
-    Returns:
-        Hasonló termékek listája
-    """
-    try:
-        # TODO: Implement real vector similarity search
-        # similar_products = await ctx.deps.vector_db.similarity_search(product_id, limit)
-        
-        # Mock data for development
-        mock_similar_products = [
-            Product(
-                id=f"similar_{i}",
-                name=f"Hasonló termék {i}",
-                description=f"Ez egy hasonló termék a {product_id} termékhez",
-                price=Decimal(str(10000 + (i * 1000))),
-                status=ProductStatus.ACTIVE,
-                created_at=datetime.now()
-            )
-            for i in range(1, limit + 1)
-        ]
-        
-        # Audit logging
-        if ctx.deps.audit_logger:
-            await ctx.deps.audit_logger.log_agent_interaction(
-                agent_type="recommendation",
-                user_id=ctx.deps.user_context.get("user_id", "unknown"),
-                session_id=ctx.deps.user_context.get('session_id'),
-                query=f"find_similar_products({product_id}, {limit})",
-                response=f"Found {len(mock_similar_products)} similar products"
-            )
-        
-        return mock_similar_products
-        
-    except Exception as e:
-        if ctx.deps.audit_logger:
-            await ctx.deps.audit_logger.log_security_event(
-                event_type="error",
-                severity="warning",
-                description=f"Error finding similar products: {str(e)}",
-                user_id=ctx.deps.user_context.get("user_id", "unknown")
-            )
-        return []
-
-async def analyze_trends_impl(ctx: RunContext[RecommendationDependencies], category: str) -> Dict[str, Any]:
-    """
-    Trend elemzés kategóriánként
-    
-    Args:
-        ctx: RunContext a függőségekkel
-        category: Termék kategória
-        
-    Returns:
-        Trend információk
-    """
-    try:
-        # TODO: Implement real trend analysis
-        # trends = await ctx.deps.supabase_client.rpc('analyze_trends', {'category': category}).execute()
-        
-        # Mock data for development
-        mock_trends = {
-            "category": category,
-            "trending_products": ["trend_1", "trend_2", "trend_3"],
-            "popular_brands": ["Brand A", "Brand B"],
-            "price_trend": "increasing",
-            "demand_level": "high",
-            "seasonal_factors": ["holiday", "back_to_school"]
-        }
-        
-        # Audit logging
-        if ctx.deps.audit_logger:
-            await ctx.deps.audit_logger.log_agent_interaction(
-                agent_type="recommendation",
-                user_id=ctx.deps.user_context.get("user_id", "unknown"),
-                session_id=ctx.deps.user_context.get('session_id'),
-                query=f"analyze_trends({category})",
-                response=str(mock_trends)
-            )
-        
-        return mock_trends
-        
-    except Exception as e:
-        if ctx.deps.audit_logger:
-            await ctx.deps.audit_logger.log_security_event(
-                event_type="error",
-                severity="warning",
-                description=f"Error analyzing trends: {str(e)}",
-                user_id=ctx.deps.user_context.get("user_id", "unknown")
-            )
-        return {}
-
-async def get_personalized_recommendations_impl(ctx: RunContext[RecommendationDependencies], user_id: str, limit: int = 10) -> List[Product]:
-    """
-    Személyre szabott ajánlatok generálása
-    
-    Args:
-        ctx: RunContext a függőségekkel
-        user_id: Felhasználó azonosítója
-        limit: Maximum ajánlatok száma
-        
-    Returns:
-        Személyre szabott ajánlatok listája
-    """
-    try:
-        # Get user preferences
-        preferences = await get_user_preferences_impl(ctx, user_id)
-        
-        # TODO: Implement real personalized recommendation algorithm
-        # recommendations = await ctx.deps.vector_db.personalized_search(user_id, preferences, limit)
-        
-        # Mock data for development
-        mock_recommendations = [
-            Product(
-                id=f"rec_{i}",
-                name=f"Személyre szabott ajánlat {i}",
-                description=f"Ez egy személyre szabott ajánlat a {user_id} felhasználónak",
-                price=Decimal(str(5000 + (i * 500))),
-                status=ProductStatus.ACTIVE,
-                created_at=datetime.now()
-            )
-            for i in range(1, limit + 1)
-        ]
-        
-        # Audit logging
-        if ctx.deps.audit_logger:
-            await ctx.deps.audit_logger.log_agent_interaction(
-                agent_type="recommendation",
-                user_id=user_id,
-                session_id=ctx.deps.user_context.get('session_id'),
-                query=f"get_personalized_recommendations({user_id}, {limit})",
-                response=f"Generated {len(mock_recommendations)} personalized recommendations"
-            )
-        
-        return mock_recommendations
-        
-    except Exception as e:
-        if ctx.deps.audit_logger:
-            await ctx.deps.audit_logger.log_security_event(
-                event_type="error",
-                severity="warning",
-                description=f"Error getting personalized recommendations: {str(e)}",
-                user_id=user_id
-            )
-        return []
-
-class MockRecommendationAgent:
-    """Mock Recommendation Agent fejlesztési célokra"""
-    
-    async def run(self, message: str, deps: RecommendationDependencies) -> ProductRecommendations:
-        return ProductRecommendations(
-            message="Ez egy mock Recommendation Agent válasz. A valós implementáció fejlesztés alatt.",
-            recommendations=[],
-            reasoning="Mock implementation",
-            confidence=0.5,
-            metadata={"agent_type": "mock_recommendation"}
+    agent = Agent(
+        'openai:gpt-4o',
+        deps_type=RecommendationDependencies,
+        output_type=RecommendationResponse,
+        system_prompt=(
+            "Te egy termék ajánló ügynök vagy a ChatBuddy webshop chatbot-ban. "
+            "Feladatod a felhasználók számára személyre szabott termék ajánlások készítése. "
+            "Válaszolj magyarul, barátságosan és részletesen. "
+            "Használd a megfelelő tool-okat a termék információk és felhasználói preferenciák lekéréséhez. "
+            "Mindig tartsd szem előtt a biztonsági protokollokat és a GDPR megfelelőséget."
         )
-
-def create_recommendation_agent() -> Any:
-    """Recommendation Agent létrehozása"""
-    global _recommendation_agent
-    if _recommendation_agent is None:
-        try:
-            # Létrehozzuk a valós agent-et
-            _recommendation_agent = Agent(
-                'openai:gpt-4o',
-                deps_type=RecommendationDependencies,
-                output_type=ProductRecommendations,
-                system_prompt="""Te egy termékajánlás és trend elemzés szakértő vagy.
-                Feladatod:
-                1. Felhasználói preferenciák elemzése
-                2. Hasonló termékek keresése
-                3. Trend elemzés és jelentés
-                4. Személyre szabott ajánlatok generálása
-                5. Felhasználóbarát válaszok adása
-                
-                Mindig használd a megfelelő eszközöket a pontos információk lekéréséhez.
-                Válaszaid legyenek barátságosak és informatívak.
-                Indokold meg az ajánlásokat és magyarázd el a trendeket."""
-            )
-            
-            # Tool-ok regisztrálása a hivatalos dokumentáció szerint
-            @_recommendation_agent.tool
-            async def get_user_preferences(ctx: RunContext[RecommendationDependencies], user_id: str) -> Dict[str, Any]:
-                """Felhasználói preferenciák lekérése"""
-                return await get_user_preferences_impl(ctx, user_id)
-            
-            @_recommendation_agent.tool
-            async def find_similar_products(ctx: RunContext[RecommendationDependencies], product_id: str, limit: int = 5) -> List[Product]:
-                """Hasonló termékek keresése"""
-                return await find_similar_products_impl(ctx, product_id, limit)
-            
-            @_recommendation_agent.tool
-            async def analyze_trends(ctx: RunContext[RecommendationDependencies], category: str) -> Dict[str, Any]:
-                """Trend elemzés kategóriánként"""
-                return await analyze_trends_impl(ctx, category)
-            
-            @_recommendation_agent.tool
-            async def get_personalized_recommendations(ctx: RunContext[RecommendationDependencies], user_id: str, limit: int = 10) -> List[Product]:
-                """Személyre szabott ajánlatok generálása"""
-                return await get_personalized_recommendations_impl(ctx, user_id, limit)
-                
-        except Exception as e:
-            # Fallback mock agent
-            print(f"Warning: Could not create Recommendation Agent: {e}")
-            _recommendation_agent = MockRecommendationAgent()
+    )
     
-    return _recommendation_agent
+    @agent.tool
+    async def get_user_preferences(
+        ctx: RunContext[RecommendationDependencies],
+        user_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Felhasználói preferenciák lekérése.
+        
+        Args:
+            user_id: Felhasználói azonosító
+            
+        Returns:
+            Felhasználói preferenciák
+        """
+        try:
+            # Mock implementáció fejlesztési célokra
+            # TODO: Implementálni valós felhasználói preferenciák lekérést
+            
+            # Security validation
+            if ctx.deps.security_context:
+                # TODO: Implementálni security check-et
+                pass
+            
+            # GDPR compliance check
+            if ctx.deps.audit_logger:
+                # TODO: Implementálni audit logging-ot
+                pass
+            
+            # Mock user preferences
+            preferences = {
+                "preferred_categories": ["telefon", "tablet", "laptop"],
+                "price_range": {"min": 10000, "max": 500000},
+                "brand_preferences": ["Samsung", "Apple", "Xiaomi"],
+                "previous_purchases": ["PHONE_001", "TABLET_002"],
+                "rating_threshold": 4.0,
+                "preferred_features": ["5G", "nagy akkumulátor", "jó kamera"]
+            }
+            
+            return preferences
+            
+        except Exception as e:
+            # TODO: Implementálni error handling-et
+            raise Exception(f"Hiba a felhasználói preferenciák lekérésekor: {str(e)}")
+    
+    @agent.tool
+    async def get_popular_products(
+        ctx: RunContext[RecommendationDependencies],
+        category: Optional[str] = None,
+        limit: int = 10
+    ) -> List[ProductRecommendation]:
+        """
+        Népszerű termékek lekérése.
+        
+        Args:
+            category: Kategória szűrő
+            limit: Eredmények száma
+            
+        Returns:
+            Népszerű termékek listája
+        """
+        try:
+            # Mock implementáció fejlesztési célokra
+            # TODO: Implementálni valós népszerű termékek lekérést
+            
+            # Mock popular products data
+            popular_products = [
+                {
+                    "product_id": "PHONE_001",
+                    "name": "Samsung Galaxy S24",
+                    "price": 299990.0,
+                    "category": "telefon",
+                    "rating": 4.5,
+                    "review_count": 127,
+                    "image_url": "https://example.com/s24.jpg",
+                    "description": "Flagship Samsung telefon legújabb funkciókkal",
+                    "confidence_score": 0.9,
+                    "reason": "Népszerű flagship telefon"
+                },
+                {
+                    "product_id": "PHONE_002",
+                    "name": "iPhone 15 Pro",
+                    "price": 399990.0,
+                    "category": "telefon",
+                    "rating": 4.7,
+                    "review_count": 89,
+                    "image_url": "https://example.com/iphone15.jpg",
+                    "description": "Apple legújabb iPhone modellje",
+                    "confidence_score": 0.85,
+                    "reason": "Prémium iPhone modell"
+                },
+                {
+                    "product_id": "TABLET_001",
+                    "name": "iPad Air",
+                    "price": 199990.0,
+                    "category": "tablet",
+                    "rating": 4.3,
+                    "review_count": 56,
+                    "image_url": "https://example.com/ipad-air.jpg",
+                    "description": "Könnyű és erős iPad Air",
+                    "confidence_score": 0.8,
+                    "reason": "Népszerű tablet választás"
+                }
+            ]
+            
+            # Filter by category if specified
+            if category:
+                popular_products = [
+                    product for product in popular_products 
+                    if product["category"] == category
+                ]
+            
+            return [ProductRecommendation(**product) for product in popular_products[:limit]]
+            
+        except Exception as e:
+            # TODO: Implementálni error handling-et
+            raise Exception(f"Hiba a népszerű termékek lekérésekor: {str(e)}")
+    
+    @agent.tool
+    async def get_similar_products(
+        ctx: RunContext[RecommendationDependencies],
+        product_id: str,
+        limit: int = 5
+    ) -> List[ProductRecommendation]:
+        """
+        Hasonló termékek lekérése.
+        
+        Args:
+            product_id: Termék azonosító
+            limit: Eredmények száma
+            
+        Returns:
+            Hasonló termékek listája
+        """
+        try:
+            # Mock implementáció fejlesztési célokra
+            # TODO: Implementálni valós hasonló termékek lekérést
+            
+            # Mock similar products data
+            similar_products = [
+                {
+                    "product_id": "PHONE_003",
+                    "name": "Samsung Galaxy S23",
+                    "price": 249990.0,
+                    "category": "telefon",
+                    "rating": 4.4,
+                    "review_count": 95,
+                    "image_url": "https://example.com/s23.jpg",
+                    "description": "Előző generációs Samsung flagship",
+                    "confidence_score": 0.75,
+                    "reason": "Hasonló Samsung telefon"
+                },
+                {
+                    "product_id": "PHONE_004",
+                    "name": "Google Pixel 8",
+                    "price": 279990.0,
+                    "category": "telefon",
+                    "rating": 4.2,
+                    "review_count": 67,
+                    "image_url": "https://example.com/pixel8.jpg",
+                    "description": "Google legújabb Pixel telefonja",
+                    "confidence_score": 0.7,
+                    "reason": "Hasonló prémium telefon"
+                }
+            ]
+            
+            return [ProductRecommendation(**product) for product in similar_products[:limit]]
+            
+        except Exception as e:
+            # TODO: Implementálni error handling-et
+            raise Exception(f"Hiba a hasonló termékek lekérésekor: {str(e)}")
+    
+    @agent.tool
+    async def get_trending_products(
+        ctx: RunContext[RecommendationDependencies],
+        category: Optional[str] = None,
+        limit: int = 10
+    ) -> List[ProductRecommendation]:
+        """
+        Trendi termékek lekérése.
+        
+        Args:
+            category: Kategória szűrő
+            limit: Eredmények száma
+            
+        Returns:
+            Trendi termékek listája
+        """
+        try:
+            # Mock implementáció fejlesztési célokra
+            # TODO: Implementálni valós trendi termékek lekérést
+            
+            # Mock trending products data
+            trending_products = [
+                {
+                    "product_id": "PHONE_005",
+                    "name": "Xiaomi 14 Ultra",
+                    "price": 349990.0,
+                    "category": "telefon",
+                    "rating": 4.6,
+                    "review_count": 43,
+                    "image_url": "https://example.com/xiaomi14.jpg",
+                    "description": "Xiaomi legújabb flagship telefonja",
+                    "confidence_score": 0.9,
+                    "reason": "Új trendi telefon"
+                },
+                {
+                    "product_id": "LAPTOP_001",
+                    "name": "MacBook Air M3",
+                    "price": 499990.0,
+                    "category": "laptop",
+                    "rating": 4.8,
+                    "review_count": 78,
+                    "image_url": "https://example.com/macbook-air.jpg",
+                    "description": "Apple legújabb MacBook Air M3 chip-pel",
+                    "confidence_score": 0.85,
+                    "reason": "Trendi laptop választás"
+                }
+            ]
+            
+            # Filter by category if specified
+            if category:
+                trending_products = [
+                    product for product in trending_products 
+                    if product["category"] == category
+                ]
+            
+            return [ProductRecommendation(**product) for product in trending_products[:limit]]
+            
+        except Exception as e:
+            # TODO: Implementálni error handling-et
+            raise Exception(f"Hiba a trendi termékek lekérésekor: {str(e)}")
+    
+    @agent.tool
+    async def get_personalized_recommendations(
+        ctx: RunContext[RecommendationDependencies],
+        user_id: str,
+        limit: int = 10
+    ) -> List[ProductRecommendation]:
+        """
+        Személyre szabott ajánlások lekérése.
+        
+        Args:
+            user_id: Felhasználói azonosító
+            limit: Eredmények száma
+            
+        Returns:
+            Személyre szabott ajánlások listája
+        """
+        try:
+            # Mock implementáció fejlesztési célokra
+            # TODO: Implementálni valós személyre szabott ajánlásokat
+            
+            # Security validation
+            if ctx.deps.security_context:
+                # TODO: Implementálni security check-et
+                pass
+            
+            # GDPR compliance check
+            if ctx.deps.audit_logger:
+                # TODO: Implementálni audit logging-ot
+                pass
+            
+            # Mock personalized recommendations
+            personalized_recommendations = [
+                {
+                    "product_id": "PHONE_006",
+                    "name": "Samsung Galaxy A55",
+                    "price": 149990.0,
+                    "category": "telefon",
+                    "rating": 4.3,
+                    "review_count": 234,
+                    "image_url": "https://example.com/a55.jpg",
+                    "description": "Kiváló ár-érték arányú Samsung telefon",
+                    "confidence_score": 0.95,
+                    "reason": "Felhasználói preferenciák alapján"
+                },
+                {
+                    "product_id": "TABLET_002",
+                    "name": "Samsung Galaxy Tab S9",
+                    "price": 199990.0,
+                    "category": "tablet",
+                    "rating": 4.4,
+                    "review_count": 89,
+                    "image_url": "https://example.com/tab-s9.jpg",
+                    "description": "Prémium Samsung tablet",
+                    "confidence_score": 0.88,
+                    "reason": "Korábbi vásárlások alapján"
+                }
+            ]
+            
+            return [ProductRecommendation(**product) for product in personalized_recommendations[:limit]]
+            
+        except Exception as e:
+            # TODO: Implementálni error handling-et
+            raise Exception(f"Hiba a személyre szabott ajánlások lekérésekor: {str(e)}")
+    
+    return agent
+
+
+async def call_recommendation_agent(
+    message: str,
+    dependencies: RecommendationDependencies
+) -> RecommendationResponse:
+    """
+    Recommendation agent hívása.
+    
+    Args:
+        message: Felhasználói üzenet
+        dependencies: Agent függőségei
+        
+    Returns:
+        Agent válasza
+    """
+    try:
+        # Agent létrehozása
+        agent = create_recommendation_agent()
+        
+        # Agent futtatása
+        result = await agent.run(message, deps=dependencies)
+        
+        return result.output
+        
+    except Exception as e:
+        # Error handling
+        return RecommendationResponse(
+            response_text=f"Sajnálom, hiba történt az ajánlások lekérésekor: {str(e)}",
+            confidence=0.0,
+            recommendations=[],
+            metadata={"error": str(e)}
+        )
 
  

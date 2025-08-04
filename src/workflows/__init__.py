@@ -11,26 +11,19 @@ This module contains LangGraph workflow definitions for:
 # Workflow exports
 from .coordinator import (
     CoordinatorAgent,
-    MessageCategory,
     get_coordinator_agent,
-    process_chat_message
+    process_coordinator_message
 )
 
-# Placeholder exports for other workflows (will be implemented)
-main_chat_workflow = None
-product_info_workflow = None
-order_status_workflow = None
-recommendations_workflow = None
-marketing_workflow = None
+from .langgraph_workflow import (
+    get_workflow_manager,
+    create_langgraph_workflow
+)
 
 __all__ = [
-    "main_chat_workflow",
     "CoordinatorAgent",
-    "MessageCategory",
     "get_coordinator_agent",
-    "process_chat_message",
-    "product_info_workflow",
-    "order_status_workflow", 
-    "recommendations_workflow",
-    "marketing_workflow"
+    "process_coordinator_message",
+    "get_workflow_manager",
+    "create_langgraph_workflow"
 ]
