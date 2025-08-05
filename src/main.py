@@ -504,6 +504,112 @@ async def websocket_stats():
         )
 
 
+@app.get("/api/v1/workflow/performance")
+async def workflow_performance():
+    """
+    Workflow teljesítmény metrikák lekérése.
+    
+    Returns:
+        Workflow performance metrikák
+    """
+    try:
+        from src.workflows.langgraph_workflow import get_workflow_manager
+        
+        workflow_manager = get_workflow_manager()
+        metrics = workflow_manager.get_performance_metrics()
+        
+        return {
+            "workflow_performance": {
+                "metrics": metrics,
+                "optimization_status": "enhanced",
+                "framework": "LangGraph + Pydantic AI",
+                "features": [
+                    "Agent Caching",
+                    "Enhanced Routing", 
+                    "Performance Monitoring",
+                    "Error Recovery"
+                ]
+            },
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Hiba a workflow performance lekérésekor: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Hiba a workflow performance lekérésekor"
+        )
+
+
+@app.get("/api/v1/cache/stats")
+async def cache_stats():
+    """
+    Cache statisztikák és állapot lekérése.
+    
+    Returns:
+        Cache performance és állapot információk
+    """
+    try:
+        from src.integrations.cache import get_redis_cache_service
+        
+        redis_cache_service = await get_redis_cache_service()
+        stats = await redis_cache_service.get_stats()
+        health = await redis_cache_service.health_check()
+        
+        return {
+            "cache_performance": {
+                "stats": stats,
+                "health": health,
+                "cache_type": "Redis",
+                "features": [
+                    "Session Caching",
+                    "Performance Caching", 
+                    "Rate Limiting",
+                    "Distributed Caching"
+                ]
+            },
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Hiba a cache statisztikák lekérésekor: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Hiba a cache statisztikák lekérésekor"
+        )
+
+
+@app.post("/api/v1/cache/invalidate")
+async def invalidate_cache(pattern: str = None):
+    """
+    Cache érvénytelenítése.
+    
+    Args:
+        pattern: Opcionális pattern a szelektív érvénytelenítéshez
+        
+    Returns:
+        Érvénytelenítés eredménye
+    """
+    try:
+        from src.workflows.langgraph_workflow import get_enhanced_workflow_manager
+        
+        workflow_manager = get_enhanced_workflow_manager()
+        await workflow_manager.invalidate_cache(pattern)
+        
+        return {
+            "cache_invalidation": {
+                "status": "success",
+                "pattern": pattern,
+                "message": f"Cache érvénytelenítve: {pattern if pattern else 'all'}"
+            },
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Hiba a cache érvénytelenítésekor: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Hiba a cache érvénytelenítésekor"
+        )
+
+
 # Development only endpoints
 if os.getenv("ENVIRONMENT") == "development":
     @app.get("/debug/env")

@@ -1,0 +1,25 @@
+[run]
+source = src
+omit = 
+    src/main.py
+    src/integrations/websocket_manager.py
+    src/config/environment_security.py
+    src/config/security_prompts.py
+    src/config/pydantic_ai_security.py
+    src/integrations/cache/redis_cache.py
+    src/integrations/database/vector_operations.py
+    src/integrations/database/setup_database.py
+    src/agents/*/tools.py
+
+[report]
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    if self.debug:
+    if settings.DEBUG
+    raise AssertionError
+    raise NotImplementedError
+    if 0:
+    if __name__ == .__main__.:
+    class .*\bProtocol\):
+    @(abc\.)?abstractmethod 

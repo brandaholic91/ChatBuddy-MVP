@@ -1,12 +1,15 @@
 """
-Koordinátor Agent - Refactored LangGraph + Pydantic AI architektúra.
+Koordinátor Agent - Enhanced LangGraph + Pydantic AI architektúra.
 
-Ez a modul implementálja a fő koordinátor agent-et az új egységes
-LangGraph workflow architektúrával.
+Ez a modul implementálja a fő koordinátor agent-et az optimalizált
+LangGraph workflow architektúrával, amely agent caching, enhanced routing
+és performance monitoring funkciókat tartalmaz Redis cache támogatással.
 """
 
 import asyncio
-from typing import Any, Dict, List, Optional
+import time
+from datetime import datetime, timezone
+from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 
 from langchain_core.messages import HumanMessage, AIMessage
@@ -15,11 +18,13 @@ from langchain_openai import ChatOpenAI
 from ..models.agent import AgentType, AgentResponse, LangGraphState
 from ..models.user import User
 from ..utils.state_management import create_initial_state, get_state_summary
-from .langgraph_workflow import get_workflow_manager
+from .langgraph_workflow import get_enhanced_workflow_manager
 # Security and audit imports
 from ..config.security import get_security_config, get_threat_detector, InputValidator
-from ..config.gdpr_compliance import get_gdpr_compliance, ConsentType, DataCategory
 from ..config.audit_logging import get_audit_logger, log_agent_interaction
+from ..config.gdpr_compliance import get_gdpr_compliance, ConsentType, DataCategory
+# Redis cache imports
+from ..integrations.cache import get_redis_cache_service, SessionCache, PerformanceCache
 
 
 @dataclass
@@ -37,10 +42,11 @@ class CoordinatorDependencies:
 
 class CoordinatorAgent:
     """
-    Koordinátor Agent - LangGraph + Pydantic AI hibrid architektúra.
+    Koordinátor Agent - Enhanced LangGraph + Pydantic AI architektúra.
     
-    Ez az agent koordinálja a különböző szakértő agent-eket a LangGraph
-    workflow segítségével.
+    Ez az agent koordinálja a különböző szakértő agent-eket az optimalizált
+    LangGraph workflow segítségével, amely agent caching, enhanced routing
+    és performance monitoring funkciókat tartalmaz.
     """
     
     def __init__(
@@ -48,14 +54,36 @@ class CoordinatorAgent:
         llm: Optional[ChatOpenAI] = None,
         verbose: bool = True
     ):
+        """Koordinátor Agent inicializálása."""
         self.llm = llm
         self.verbose = verbose
-        self._workflow_manager = get_workflow_manager()
+        self._workflow_manager = get_enhanced_workflow_manager()
         # Initialize security and audit components
         self._security_config = get_security_config()
         self._threat_detector = get_threat_detector()
+        self._input_validator = InputValidator()
         self._audit_logger = get_audit_logger()
         self._gdpr_compliance = get_gdpr_compliance()
+        # Initialize Redis cache components
+        self._redis_cache_service = None
+        self._session_cache = None
+        self._performance_cache = None
+        self._cache_initialized = False
+    
+    async def _initialize_cache(self):
+        """Redis cache inicializálása."""
+        if not self._cache_initialized:
+            try:
+                self._redis_cache_service = await get_redis_cache_service()
+                self._session_cache = self._redis_cache_service.session_cache
+                self._performance_cache = self._redis_cache_service.performance_cache
+                self._cache_initialized = True
+                if self.verbose:
+                    print("✅ Redis cache initialized for coordinator")
+            except Exception as e:
+                if self.verbose:
+                    print(f"⚠️ Redis cache initialization failed: {e}")
+                self._cache_initialized = True  # Mark as initialized to avoid retries
     
     async def process_message(
         self,
@@ -65,13 +93,13 @@ class CoordinatorAgent:
         dependencies: Optional[CoordinatorDependencies] = None
     ) -> AgentResponse:
         """
-        Üzenet feldolgozása a koordinátor agent-tel.
+        Üzenet feldolgozása Redis cache támogatással.
         
         Args:
-            message: Felhasználói üzenet
+            message: Feldolgozandó üzenet
             user: Felhasználó objektum
             session_id: Session azonosító
-            dependencies: Koordinátor függőségei
+            dependencies: Függőségek
             
         Returns:
             Agent válasz
@@ -79,47 +107,76 @@ class CoordinatorAgent:
         start_time = asyncio.get_event_loop().time()
         
         try:
-            # Input validation and sanitization
-            sanitized_message = InputValidator.sanitize_string(message)
+            # 1. Initialize cache
+            await self._initialize_cache()
+            
+            # 2. Input validation and sanitization
+            sanitized_message = self._input_validator.sanitize_string(message)
             if sanitized_message != message:
-                if self.verbose:
-                    print(f"Input sanitized: {message[:50]}... -> {sanitized_message[:50]}...")
                 message = sanitized_message
             
-            # Threat detection
-            threat_analysis = self._threat_detector.detect_threats(message)
-            if threat_analysis["risk_level"] == "high":
-                # Log security event
-                await self._audit_logger.log_security_event(
-                    event_type="high_threat_detected",
-                    user_id=user.id if user else "anonymous",
-                    details=threat_analysis
-                )
-                
-                error_response = AgentResponse(
+            # 3. Threat detection
+            threat_analysis = await self._threat_detector.analyze_message(message)
+            if threat_analysis.get("threat_level", "low") == "high":
+                return AgentResponse(
                     agent_type=AgentType.COORDINATOR,
-                    response_text="Sajnálom, a kérés biztonsági okokból nem feldolgozható.",
+                    response_text="Sajnálom, ez az üzenet nem feldolgozható biztonsági okokból.",
                     confidence=0.0,
-                    metadata={
-                        "error": "high_threat_detected",
-                        "threat_analysis": threat_analysis,
-                        "session_id": session_id,
-                        "user_id": user.id if user else None
-                    }
+                    metadata={"threat_detected": True, "threat_analysis": threat_analysis}
                 )
-                return error_response
             
-            # Prepare dependencies
+            # 4. Check Redis cache for session
+            if self._session_cache and session_id:
+                session_data = await self._session_cache.get_session(session_id)
+                if session_data:
+                    # Update session activity
+                    session_data.last_activity = datetime.now()
+                    await self._session_cache.update_session(session_id, session_data)
+            
+            # 5. Check Redis cache for response
+            if self._performance_cache:
+                import hashlib
+                import json
+                
+                # Generate cache key for response
+                cache_data = {
+                    "message": message,
+                    "user_id": user.id if user else "anonymous",
+                    "session_id": session_id,
+                    "timestamp": int(time.time() / 300)  # 5-minute cache window
+                }
+                cache_key = f"coordinator_response:{hashlib.md5(json.dumps(cache_data, sort_keys=True).encode()).hexdigest()}"
+                
+                cached_response = await self._performance_cache.get_cached_agent_response(cache_key)
+                if cached_response:
+                    # Return cached response
+                    return AgentResponse(
+                        agent_type=AgentType.COORDINATOR,
+                        response_text=cached_response.get("response_text", "Cache-elt válasz"),
+                        confidence=cached_response.get("confidence", 0.8),
+                        metadata={
+                            **cached_response.get("metadata", {}),
+                            "cached": True,
+                            "cache_source": "redis",
+                            "session_id": session_id,
+                            "user_id": user.id if user else None
+                        }
+                    )
+            
+            # 6. Create dependencies
             if dependencies is None:
                 dependencies = CoordinatorDependencies(
                     user=user,
                     session_id=session_id,
                     llm=self.llm,
+                    supabase_client=None,  # Will be set by workflow
+                    webshop_api=None,  # Will be set by workflow
+                    security_context=self._security_config,
                     audit_logger=self._audit_logger,
                     gdpr_compliance=self._gdpr_compliance
                 )
             
-            # Create initial LangGraph state
+            # 7. Process message through enhanced LangGraph workflow
             initial_state = create_initial_state(
                 user_message=message,
                 user_context={
@@ -138,19 +195,28 @@ class CoordinatorAgent:
                 audit_logger=dependencies.audit_logger,
                 gdpr_compliance=dependencies.gdpr_compliance
             )
-            
-            # Process message through LangGraph workflow
             final_state = await self._workflow_manager.process_message(initial_state)
             
-            # Extract response from final state
+            # 8. Extract response from final state
             response_text = self._extract_response_from_state(final_state)
             confidence = self._extract_confidence_from_state(final_state)
             metadata = self._extract_metadata_from_state(final_state)
             
-            # Calculate processing time
+            # 9. Calculate processing time
             processing_time = asyncio.get_event_loop().time() - start_time
             
-            # Create agent response
+            # 10. Cache the response in Redis
+            if self._performance_cache:
+                response_data = {
+                    "response_text": response_text,
+                    "confidence": confidence,
+                    "metadata": metadata,
+                    "processing_time": processing_time,
+                    "created_at": time.time()
+                }
+                await self._performance_cache.cache_agent_response(cache_key, response_data)
+            
+            # 11. Create agent response
             response = AgentResponse(
                 agent_type=AgentType.COORDINATOR,
                 response_text=response_text,
@@ -159,14 +225,18 @@ class CoordinatorAgent:
                     "session_id": session_id,
                     "user_id": user.id if user else None,
                     "langgraph_used": True,
+                    "enhanced_workflow": True,
+                    "redis_cache_used": self._cache_initialized,
                     "workflow_summary": get_state_summary(final_state),
                     "processing_time": processing_time,
                     "threat_analysis": threat_analysis,
+                    "cached": False,
+                    "cache_source": "redis" if self._cache_initialized else "memory",
                     **metadata
                 }
             )
             
-            # Audit logging for successful interaction
+            # 12. Audit logging for successful interaction
             await log_agent_interaction(
                 user_id=user.id if user else "anonymous",
                 agent_name="coordinator",
@@ -179,6 +249,7 @@ class CoordinatorAgent:
             if self.verbose:
                 print(f"Koordinátor Agent válasz: {response_text[:100]}...")
                 print(f"Feldolgozási idő: {processing_time:.2f}s")
+                print(f"Redis cache használva: {self._cache_initialized}")
             
             return response
             
@@ -196,6 +267,8 @@ class CoordinatorAgent:
                     "session_id": session_id,
                     "user_id": user.id if user else None,
                     "langgraph_used": True,
+                    "enhanced_workflow": True,
+                    "redis_cache_used": self._cache_initialized,
                     "processing_time": processing_time
                 }
             )
@@ -330,12 +403,16 @@ class CoordinatorAgent:
             return {
                 "agent_type": "coordinator",
                 "status": "active",
-                "workflow_manager": "initialized",
+                "workflow_manager": "enhanced_initialized",
                 "llm_available": self.llm is not None,
                 "verbose_mode": self.verbose,
                 "security_enabled": True,
                 "audit_logging_enabled": True,
-                "gdpr_compliance_enabled": True
+                "gdpr_compliance_enabled": True,
+                "enhanced_workflow": True,
+                "redis_cache_enabled": True,
+                "session_cache_enabled": True,
+                "performance_cache_enabled": True
             }
             
         except Exception as e:

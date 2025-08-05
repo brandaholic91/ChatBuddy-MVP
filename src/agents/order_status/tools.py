@@ -11,7 +11,7 @@ import re
 from enum import Enum
 
 from src.models.order import Order, OrderStatus, OrderItem
-from src.config.audit_logging import SecurityAuditLogger
+from src.config.audit_logging import AuditLogger
 
 
 class OrderQueryType(Enum):
@@ -183,7 +183,7 @@ def generate_next_steps(order: Order) -> List[str]:
     return steps
 
 
-def validate_order_access(user_id: str, order: Order, audit_logger: SecurityAuditLogger) -> bool:
+def validate_order_access(user_id: str, order: Order, audit_logger: AuditLogger) -> bool:
     """Rendelés hozzáférés validálása"""
     # Alapvető validáció
     if not user_id or not order:

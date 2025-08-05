@@ -12,7 +12,7 @@ import re
 from enum import Enum
 
 from src.models.product import Product, ProductCategory
-from src.config.audit_logging import SecurityAuditLogger
+from src.config.audit_logging import AuditLogger
 
 class RecommendationType(Enum):
     """Ajánlás típusok"""
@@ -235,7 +235,7 @@ def generate_recommendation_reasoning(
     
     return reasoning
 
-def validate_user_access(user_id: str, audit_logger: SecurityAuditLogger) -> bool:
+def validate_user_access(user_id: str, audit_logger: AuditLogger) -> bool:
     """
     Felhasználói hozzáférés validálása
     

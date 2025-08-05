@@ -286,14 +286,15 @@
                 
                 // WebSocket URL összeállítása
                 const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-                const host = window.location.hostname;
+                const host = 'localhost'; // Explicit localhost használata
                 const port = '8000'; // FastAPI alapértelmezett port
-                const url = `${protocol}//${host}:${port}/ws/chat/${this.sessionId}`;
+                let url = `${protocol}//${host}:${port}/ws/chat/${this.sessionId}`;
                 
                 if (this.userId) {
                     url += `?user_id=${this.userId}`;
                 }
                 
+                console.log('WebSocket kapcsolat létrehozása:', url);
                 this.websocket = new WebSocket(url);
                 
                 this.websocket.onopen = (event) => {
@@ -316,8 +317,9 @@
                 
                 this.websocket.onerror = (error) => {
                     console.error('WebSocket hiba:', error);
+                    console.error('WebSocket URL:', url);
                     this.updateConnectionStatus('disconnected', 'Kapcsolódási hiba');
-                    this.addErrorMessage('Kapcsolódási hiba történt');
+                    this.addErrorMessage('Kapcsolódási hiba történt. Ellenőrizze a konzolt a részletekért.');
                 };
             }
             
