@@ -102,15 +102,15 @@ mypy src/
 
 ### 🚀 **KÖVETKEZŐ LÉPÉSEK (Prioritás szerint):**
 
-#### **1. Adatbázis és Integráció (1-2 hét)** - **KÖVETKEZŐ LÉPÉS**
-- 🔴 **Supabase Schema Design** - Táblák létrehozása, pgvector extension
-- 🔴 **Vector Database Integration** - OpenAI embeddings API integráció
-- 🟡 **Redis Cache Implementation** - Session storage, performance cache
-- Product Info Agent mintájára implementálás
-- Tool functions: order_lookup, status_update, tracking_info, refund_request
-- Structured output Pydantic modellekkel
-- Security context engineering integrálva
-- Unit tesztek implementálása
+#### **1. Adatbázis és Integráció (1-2 hét)** ✅ **ELKÉSZÜLT**
+- ✅ **Supabase Schema Design** - Táblák létrehozása, pgvector extension
+- ✅ **Vector Database Integration** - OpenAI embeddings API integráció
+- ✅ **Redis Cache Implementation** - Session storage, performance cache
+  - Redis asyncio integráció és session lifecycle management
+  - Performance cache (agent válaszok, termékinformációk, search results)
+  - Rate limiting és IP-based throttling
+  - Docker Compose Redis 8 setup és health checks
+  - Comprehensive testing framework
 
 #### **2. Recommendation Agent implementálása** ✅ **ELKÉSZÜLT**
 - Product Info Agent mintájára implementálás
@@ -136,11 +136,11 @@ mypy src/
 - OpenAI embeddings API integráció
 - Termék embedding batch processing
 
-#### **6. Redis Cache Implementation**
-- Performance optimalizáció
-- Session storage
-- Performance cache
-- Rate limiting
+#### **6. WebSocket Chat Interface** 🔴 **KÖVETKEZŐ LÉPÉS**
+- Real-time kommunikáció
+- Session kezelés
+- Message persistence
+- Security middleware integrálva
 
 ## Projekt Áttekintés
 

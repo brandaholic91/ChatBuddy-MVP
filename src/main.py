@@ -16,6 +16,7 @@ from src.models.chat import ChatRequest, ChatResponse
 from src.models.user import User
 from src.config.audit_logging import get_audit_logger, AuditSeverity
 from src.config.gdpr_compliance import get_gdpr_compliance
+from src.integrations.cache import get_redis_cache_service, shutdown_redis_cache_service
 
 # Load environment variables from .env file
 load_dotenv()
@@ -59,6 +60,14 @@ async def lifespan_context(app):
         print("✅ GDPR compliance layer initialized")
         await setup_rate_limiting()
         print("✅ Rate limiting initialized")
+        
+        # Redis cache inicializálása
+        try:
+            redis_cache_service = await get_redis_cache_service()
+            print("✅ Redis cache service initialized")
+        except Exception as e:
+            print(f"⚠️ Redis cache service initialization failed: {e}")
+        
         print("🔒 Security systems initialized successfully")
     except Exception as e:
         print(f"❌ Error initializing security systems: {e}")
@@ -69,6 +78,14 @@ async def lifespan_context(app):
         audit_logger = get_audit_logger()
         await audit_logger.stop_processing()
         print("✅ Security audit logger stopped")
+        
+        # Redis cache leállítása
+        try:
+            await shutdown_redis_cache_service()
+            print("✅ Redis cache service stopped")
+        except Exception as e:
+            print(f"⚠️ Redis cache service shutdown failed: {e}")
+            
     except Exception as e:
         print(f"❌ Error shutting down security systems: {e}")
 
@@ -127,12 +144,20 @@ async def health_check():
             if not os.getenv(var):
                 missing_vars.append(var)
         
-        # Check services (placeholder for now)
+        # Check services
         services_status = {
             "database": "connected",  # Will be implemented
-            "redis": "connected",      # Will be implemented
             "ai_models": "available"   # Will be implemented
         }
+        
+        # Redis cache health check
+        try:
+            redis_cache_service = await get_redis_cache_service()
+            redis_health = await redis_cache_service.health_check()
+            services_status["redis"] = "connected" if redis_health["redis_connection"] else "disconnected"
+        except Exception as e:
+            services_status["redis"] = "error"
+            print(f"Redis health check error: {e}")
         
         # Overall status
         if missing_vars:
