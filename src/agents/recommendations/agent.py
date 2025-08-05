@@ -44,6 +44,9 @@ class RecommendationResponse(BaseModel):
     recommendations: List[ProductRecommendation] = Field(description="Termék ajánlások", default_factory=list)
     category: str = Field(description="Ajánlás kategóriája")
     user_preferences: Dict[str, Any] = Field(description="Felhasználói preferenciák", default_factory=dict)
+    popular_products: List[Dict[str, Any]] = Field(description="Népszerű termékek", default_factory=list)
+    similar_products: List[Dict[str, Any]] = Field(description="Hasonló termékek", default_factory=list)
+    trending_products: List[Dict[str, Any]] = Field(description="Trending termékek", default_factory=list)
     metadata: Dict[str, Any] = Field(description="Metaadatok", default_factory=dict)
 
 

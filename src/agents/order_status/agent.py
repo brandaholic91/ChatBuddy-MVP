@@ -42,6 +42,8 @@ class OrderResponse(BaseModel):
     confidence: float = Field(description="Bizonyosság", ge=0.0, le=1.0)
     order_info: Optional[OrderInfo] = Field(description="Rendelés információ", default=None)
     status_summary: str = Field(description="Státusz összefoglaló")
+    user_orders: List[Dict[str, Any]] = Field(description="Felhasználó rendelései", default_factory=list)
+    tracking_info: Optional[Dict[str, Any]] = Field(description="Követési információ", default=None)
     next_steps: List[str] = Field(description="Következő lépések", default_factory=list)
     metadata: Dict[str, Any] = Field(description="Metaadatok", default_factory=dict)
 

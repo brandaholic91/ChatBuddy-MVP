@@ -229,7 +229,7 @@ class DatabaseSchemaFixer:
                         success_count += 1
                     else:
                         logger.warning(f"⚠️ SQL parancs {i} részleges: {result}")
-                        success_count += 1  # Még mindig sikeresnek tekintjük
+                        # Részleges sikert nem tekintjük sikernek
                         
                 except Exception as e:
                     # Ha a hiba JSON parsing hiba, de a művelet sikeres volt
@@ -320,6 +320,7 @@ async def main():
                 logger.warning("\n⚠️ Javítás ellenőrzése sikertelen")
         else:
             logger.error("\n❌ ADATBÁZIS SÉMA JAVÍTÁS SIKERTELEN")
+            raise Exception("Database schema fix failed")
         
     except Exception as e:
         logger.error(f"❌ Kritikus hiba: {e}")

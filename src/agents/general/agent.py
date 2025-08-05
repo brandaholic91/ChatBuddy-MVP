@@ -312,6 +312,20 @@ def create_general_agent() -> Agent:
     return agent
 
 
+# Export tool functions for testing
+__all__ = [
+    'create_general_agent',
+    'call_general_agent',
+    'GeneralDependencies',
+    'GeneralResponse',
+    'get_help_topics',
+    'get_contact_info',
+    'get_faq_answers',
+    'get_website_info',
+    'get_user_guide'
+]
+
+
 async def call_general_agent(
     message: str,
     dependencies: GeneralDependencies

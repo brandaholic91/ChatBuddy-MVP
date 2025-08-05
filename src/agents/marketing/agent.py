@@ -63,19 +63,28 @@ def create_marketing_agent() -> Agent:
     Returns:
         Marketing agent
     """
-    agent = Agent(
-        'openai:gpt-4o',
-        deps_type=MarketingDependencies,
-        output_type=MarketingResponse,
-        system_prompt=(
-            "Te egy marketing ügynök vagy a ChatBuddy webshop chatbot-ban. "
-            "Feladatod a promóciók, kedvezmények és hírlevelek kezelése. "
-            "Válaszolj magyarul, barátságosan és vonzóan. "
-            "Használd a megfelelő tool-okat a marketing információk lekéréséhez. "
-            "Mindig tartsd szem előtt a GDPR megfelelőséget és a marketing hozzájárulásokat. "
-            "Ne küldj marketing tartalmat hozzájárulás nélkül."
+    # Lazy loading - csak akkor hozzuk létre az Agent-et, amikor szükség van rá
+    # Ez megakadályozza, hogy a modul importálásakor API hívás történjen
+    def _create_agent():
+        return Agent(
+            'openai:gpt-4o',
+            deps_type=MarketingDependencies,
+            output_type=MarketingResponse,
+            system_prompt=(
+                "Te egy marketing ügynök vagy a ChatBuddy webshop chatbot-ban. "
+                "Feladatod a promóciók, kedvezmények és hírlevelek kezelése. "
+                "Válaszolj magyarul, barátságosan és vonzóan. "
+                "Használd a megfelelő tool-okat a marketing információk lekéréséhez. "
+                "Mindig tartsd szem előtt a GDPR megfelelőséget és a marketing hozzájárulásokat. "
+                "Ne küldj marketing tartalmat hozzájárulás nélkül."
+            )
         )
-    )
+    
+    # Singleton pattern - csak egyszer hozzuk létre
+    if not hasattr(create_marketing_agent, '_agent'):
+        create_marketing_agent._agent = _create_agent()
+    
+    agent = create_marketing_agent._agent
     
     @agent.tool
     async def get_active_promotions(

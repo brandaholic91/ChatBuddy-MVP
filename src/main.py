@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 
 from src.config.logging import setup_logging
 from src.config.security import setup_security_middleware, get_security_headers
+from src.config.langgraph_auth import initialize_langgraph_auth, shutdown_langgraph_auth
 from src.workflows.coordinator import process_coordinator_message
 from src.models.chat import ChatRequest, ChatResponse
 from src.models.user import User
@@ -84,6 +85,13 @@ async def lifespan_context(app):
         except Exception as e:
             print(f"⚠️ WebSocket chat handler initialization failed: {e}")
         
+        # LangGraph SDK authentikáció inicializálása
+        try:
+            await initialize_langgraph_auth()
+            print("✅ LangGraph SDK authentication initialized")
+        except Exception as e:
+            print(f"⚠️ LangGraph SDK authentication initialization failed: {e}")
+        
         print("🔒 Security systems initialized successfully")
     except Exception as e:
         print(f"❌ Error initializing security systems: {e}")
@@ -94,6 +102,13 @@ async def lifespan_context(app):
         audit_logger = get_audit_logger()
         await audit_logger.stop_processing()
         print("✅ Security audit logger stopped")
+        
+        # LangGraph SDK authentikáció leállítása
+        try:
+            await shutdown_langgraph_auth()
+            print("✅ LangGraph SDK authentication stopped")
+        except Exception as e:
+            print(f"⚠️ LangGraph SDK authentication shutdown failed: {e}")
         
         # Redis cache leállítása
         try:
