@@ -27,10 +27,14 @@ class TestSupabaseClient:
         """Teszteli a konfiguráció betöltését"""
         with patch.dict('os.environ', {
             'SUPABASE_URL': 'https://test.supabase.co',
-            'SUPABASE_KEY': 'test-key',
-            'SUPABASE_SERVICE_ROLE_KEY': 'service-key'
+            'SUPABASE_ANON_KEY': 'test-key',
+            'SUPABASE_SERVICE_KEY': 'service-key'
         }):
-            config = SupabaseConfig()
+            config = SupabaseConfig(
+                url='https://test.supabase.co',
+                key='test-key',
+                service_role_key='service-key'
+            )
             assert config.url == 'https://test.supabase.co'
             assert config.key == 'test-key'
             assert config.service_role_key == 'service-key'

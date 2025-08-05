@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChatBuddy WebSocket Kliens Példa</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            color: #333;
+        }
+        
+        .connection-status {
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            text-align: center;
+            font-weight: bold;
+        }
+        
+        .connected {
+            background-color: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .disconnected {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .connecting {
+            background-color: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+        }
+        
+        .chat-container {
+            display: flex;
+            flex-direction: column;
+            height: 400px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            overflow: hidden;
+        }
+        
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+            background-color: #f8f9fa;
+        }
+        
+        .message {
+            margin-bottom: 15px;
+            padding: 10px;
+            border-radius: 8px;
+            max-width: 80%;
+        }
+        
+        .message.user {
+            background-color: #007bff;
+            color: white;
+            margin-left: auto;
+        }
+        
+        .message.assistant {
+            background-color: #e9ecef;
+            color: #333;
+            margin-right: auto;
+        }
+        
+        .message.error {
+            background-color: #dc3545;
+            color: white;
+            margin-right: auto;
+        }
+        
+        .message.system {
+            background-color: #6c757d;
+            color: white;
+            text-align: center;
+            margin: 10px auto;
+            font-size: 0.9em;
+        }
+        
+        .message-time {
+            font-size: 0.8em;
+            opacity: 0.7;
+            margin-top: 5px;
+        }
+        
+        .input-container {
+            display: flex;
+            padding: 15px;
+            background-color: white;
+            border-top: 1px solid #ddd;
+        }
+        
+        .message-input {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin-right: 10px;
+            font-size: 14px;
+        }
+        
+        .send-button {
+            padding: 10px 20px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        
+        .send-button:hover {
+            background-color: #0056b3;
+        }
+        
+        .send-button:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+        }
+        
+        .control-button {
+            padding: 8px 16px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background-color: white;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        
+        .control-button:hover {
+            background-color: #f8f9fa;
+        }
+        
+        .stats {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f8f9fa;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        
+        .stats h3 {
+            margin-top: 0;
+            color: #333;
+        }
+        
+        .stats-item {
+            margin: 5px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🤖 ChatBuddy WebSocket Kliens</h1>
+            <p>Real-time chat kommunikáció tesztelése</p>
+        </div>
+        
+        <div id="connectionStatus" class="connection-status disconnected">
+            Kapcsolat nincs létrehozva
+        </div>
+        
+        <div class="chat-container">
+            <div id="chatMessages" class="chat-messages">
+                <div class="message system">
+                    Üdvözöljük a ChatBuddy WebSocket kliensben! Kapcsolódjon a chat szerverhez.
+                </div>
+            </div>
+            
+            <div class="input-container">
+                <input 
+                    type="text" 
+                    id="messageInput" 
+                    class="message-input" 
+                    placeholder="Írja be az üzenetét..."
+                    disabled
+                >
+                <button id="sendButton" class="send-button" disabled>Küldés</button>
+            </div>
+        </div>
+        
+        <div class="controls">
+            <button id="connectButton" class="control-button">Kapcsolódás</button>
+            <button id="disconnectButton" class="control-button" disabled>Kapcsolat lezárása</button>
+            <button id="pingButton" class="control-button" disabled>Ping</button>
+            <button id="sessionInfoButton" class="control-button" disabled>Session Info</button>
+        </div>
+        
+        <div class="stats">
+            <h3>Kapcsolat információk</h3>
+            <div id="connectionInfo">
+                <div class="stats-item">Session ID: <span id="sessionId">-</span></div>
+                <div class="stats-item">Connection ID: <span id="connectionId">-</span></div>
+                <div class="stats-item">User ID: <span id="userId">-</span></div>
+                <div class="stats-item">Kapcsolat időpontja: <span id="connectedAt">-</span></div>
+                <div class="stats-item">Üzenetek száma: <span id="messageCount">0</span></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class ChatBuddyWebSocketClient {
+            constructor() {
+                this.websocket = null;
+                this.sessionId = this.generateSessionId();
+                this.userId = null;
+                this.connectionId = null;
+                this.connectedAt = null;
+                this.messageCount = 0;
+                this.isConnected = false;
+                
+                this.initializeElements();
+                this.bindEvents();
+            }
+            
+            generateSessionId() {
+                return 'session_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+            }
+            
+            initializeElements() {
+                this.connectionStatus = document.getElementById('connectionStatus');
+                this.chatMessages = document.getElementById('chatMessages');
+                this.messageInput = document.getElementById('messageInput');
+                this.sendButton = document.getElementById('sendButton');
+                this.connectButton = document.getElementById('connectButton');
+                this.disconnectButton = document.getElementById('disconnectButton');
+                this.pingButton = document.getElementById('pingButton');
+                this.sessionInfoButton = document.getElementById('sessionInfoButton');
+                
+                // Stats elements
+                this.sessionIdSpan = document.getElementById('sessionId');
+                this.connectionIdSpan = document.getElementById('connectionId');
+                this.userIdSpan = document.getElementById('userId');
+                this.connectedAtSpan = document.getElementById('connectedAt');
+                this.messageCountSpan = document.getElementById('messageCount');
+            }
+            
+            bindEvents() {
+                this.connectButton.addEventListener('click', () => this.connect());
+                this.disconnectButton.addEventListener('click', () => this.disconnect());
+                this.pingButton.addEventListener('click', () => this.sendPing());
+                this.sessionInfoButton.addEventListener('click', () => this.requestSessionInfo());
+                this.sendButton.addEventListener('click', () => this.sendMessage());
+                this.messageInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        this.sendMessage();
+                    }
+                });
+            }
+            
+            connect() {
+                if (this.isConnected) return;
+                
+                this.updateConnectionStatus('connecting', 'Kapcsolódás...');
+                
+                // WebSocket URL összeállítása
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const host = window.location.hostname;
+                const port = '8000'; // FastAPI alapértelmezett port
+                const url = `${protocol}//${host}:${port}/ws/chat/${this.sessionId}`;
+                
+                if (this.userId) {
+                    url += `?user_id=${this.userId}`;
+                }
+                
+                this.websocket = new WebSocket(url);
+                
+                this.websocket.onopen = (event) => {
+                    console.log('WebSocket kapcsolat létrehozva:', event);
+                    this.updateConnectionStatus('connecting', 'Kapcsolat létrehozva, várakozás...');
+                };
+                
+                this.websocket.onmessage = (event) => {
+                    const message = JSON.parse(event.data);
+                    this.handleMessage(message);
+                };
+                
+                this.websocket.onclose = (event) => {
+                    console.log('WebSocket kapcsolat lezárva:', event);
+                    this.isConnected = false;
+                    this.updateConnectionStatus('disconnected', 'Kapcsolat lezárva');
+                    this.updateControls();
+                    this.addSystemMessage('Kapcsolat lezárva');
+                };
+                
+                this.websocket.onerror = (error) => {
+                    console.error('WebSocket hiba:', error);
+                    this.updateConnectionStatus('disconnected', 'Kapcsolódási hiba');
+                    this.addErrorMessage('Kapcsolódási hiba történt');
+                };
+            }
+            
+            disconnect() {
+                if (this.websocket) {
+                    this.websocket.close();
+                    this.websocket = null;
+                }
+            }
+            
+            handleMessage(message) {
+                console.log('Üzenet fogadva:', message);
+                
+                switch (message.type) {
+                    case 'connection_established':
+                        this.handleConnectionEstablished(message.data);
+                        break;
+                    case 'chat_response':
+                        this.handleChatResponse(message.data);
+                        break;
+                    case 'pong':
+                        this.handlePong(message.data);
+                        break;
+                    case 'session_info':
+                        this.handleSessionInfo(message.data);
+                        break;
+                    case 'error':
+                        this.handleError(message.data);
+                        break;
+                    default:
+                        console.warn('Ismeretlen üzenet típus:', message.type);
+                }
+            }
+            
+            handleConnectionEstablished(data) {
+                this.isConnected = true;
+                this.connectionId = data.connection_id;
+                this.userId = data.user_id;
+                this.connectedAt = data.timestamp;
+                
+                this.updateConnectionStatus('connected', 'Kapcsolódva');
+                this.updateControls();
+                this.updateStats();
+                this.addSystemMessage('Kapcsolat létrehozva!');
+            }
+            
+            handleChatResponse(data) {
+                this.messageCount++;
+                this.updateStats();
+                this.addMessage('assistant', data.content, data.timestamp);
+            }
+            
+            handlePong(data) {
+                this.addSystemMessage(`Pong válasz: ${data.timestamp}`);
+            }
+            
+            handleSessionInfo(data) {
+                this.updateStats();
+                this.addSystemMessage('Session információk frissítve');
+            }
+            
+            handleError(data) {
+                this.addErrorMessage(`Hiba: ${data.error_message}`);
+            }
+            
+            sendMessage() {
+                if (!this.isConnected) return;
+                
+                const content = this.messageInput.value.trim();
+                if (!content) return;
+                
+                const message = {
+                    type: 'chat_message',
+                    content: content,
+                    session_id: this.sessionId,
+                    timestamp: new Date().toISOString()
+                };
+                
+                this.websocket.send(JSON.stringify(message));
+                this.addMessage('user', content, message.timestamp);
+                this.messageInput.value = '';
+                this.messageCount++;
+                this.updateStats();
+            }
+            
+            sendPing() {
+                if (!this.isConnected) return;
+                
+                const message = {
+                    type: 'ping',
+                    timestamp: new Date().toISOString()
+                };
+                
+                this.websocket.send(JSON.stringify(message));
+                this.addSystemMessage('Ping küldve...');
+            }
+            
+            requestSessionInfo() {
+                if (!this.isConnected) return;
+                
+                const message = {
+                    type: 'session_info',
+                    timestamp: new Date().toISOString()
+                };
+                
+                this.websocket.send(JSON.stringify(message));
+                this.addSystemMessage('Session információk kérve...');
+            }
+            
+            addMessage(type, content, timestamp) {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = `message ${type}`;
+                
+                const contentDiv = document.createElement('div');
+                contentDiv.textContent = content;
+                messageDiv.appendChild(contentDiv);
+                
+                const timeDiv = document.createElement('div');
+                timeDiv.className = 'message-time';
+                timeDiv.textContent = new Date(timestamp).toLocaleTimeString();
+                messageDiv.appendChild(timeDiv);
+                
+                this.chatMessages.appendChild(messageDiv);
+                this.scrollToBottom();
+            }
+            
+            addSystemMessage(content) {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'message system';
+                messageDiv.textContent = content;
+                this.chatMessages.appendChild(messageDiv);
+                this.scrollToBottom();
+            }
+            
+            addErrorMessage(content) {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = 'message error';
+                messageDiv.textContent = content;
+                this.chatMessages.appendChild(messageDiv);
+                this.scrollToBottom();
+            }
+            
+            updateConnectionStatus(status, text) {
+                this.connectionStatus.className = `connection-status ${status}`;
+                this.connectionStatus.textContent = text;
+            }
+            
+            updateControls() {
+                this.connectButton.disabled = this.isConnected;
+                this.disconnectButton.disabled = !this.isConnected;
+                this.pingButton.disabled = !this.isConnected;
+                this.sessionInfoButton.disabled = !this.isConnected;
+                this.messageInput.disabled = !this.isConnected;
+                this.sendButton.disabled = !this.isConnected;
+            }
+            
+            updateStats() {
+                this.sessionIdSpan.textContent = this.sessionId;
+                this.connectionIdSpan.textContent = this.connectionId || '-';
+                this.userIdSpan.textContent = this.userId || '-';
+                this.connectedAtSpan.textContent = this.connectedAt ? new Date(this.connectedAt).toLocaleString() : '-';
+                this.messageCountSpan.textContent = this.messageCount;
+            }
+            
+            scrollToBottom() {
+                this.chatMessages.scrollTop = this.chatMessages.scrollHeight;
+            }
+        }
+        
+        // Kliens inicializálása
+        document.addEventListener('DOMContentLoaded', () => {
+            const client = new ChatBuddyWebSocketClient();
+            
+            // Globális hozzáférés teszteléshez
+            window.chatClient = client;
+        });
+    </script>
+</body>
+</html> 

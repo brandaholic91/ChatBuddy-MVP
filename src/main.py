@@ -4,7 +4,7 @@ Chatbuddy MVP - Main FastAPI application.
 
 import os
 from datetime import datetime, timezone
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
@@ -17,15 +17,21 @@ from src.models.user import User
 from src.config.audit_logging import get_audit_logger, AuditSeverity
 from src.config.gdpr_compliance import get_gdpr_compliance
 from src.integrations.cache import get_redis_cache_service, shutdown_redis_cache_service
+from src.integrations.websocket_manager import websocket_manager, chat_handler
+from src.config.logging import get_logger
 
 # Load environment variables from .env file
 load_dotenv()
+
+# Set test environment for pytest
+import sys
+if "pytest" in sys.modules:
+    os.environ["ENVIRONMENT"] = "test"
 
 # Environment security validation - KRITIKUS
 from src.config.environment_security import validate_environment_on_startup
 
 # Validate environment on startup (skip during testing)
-import sys
 if "pytest" not in sys.modules:
     print("🔒 Környezeti változók biztonsági validálása...")
     if not validate_environment_on_startup():
@@ -34,6 +40,9 @@ if "pytest" not in sys.modules:
 
 # Setup logging
 setup_logging()
+
+# Get logger for WebSocket endpoint
+logger = get_logger(__name__)
 
 # Create FastAPI app
 app = FastAPI(
@@ -67,6 +76,13 @@ async def lifespan_context(app):
             print("✅ Redis cache service initialized")
         except Exception as e:
             print(f"⚠️ Redis cache service initialization failed: {e}")
+        
+        # WebSocket handler inicializálása
+        try:
+            await chat_handler.initialize()
+            print("✅ WebSocket chat handler initialized")
+        except Exception as e:
+            print(f"⚠️ WebSocket chat handler initialization failed: {e}")
         
         print("🔒 Security systems initialized successfully")
     except Exception as e:
@@ -393,6 +409,98 @@ async def chat_endpoint(request: ChatRequest, request_obj: Request):
         raise HTTPException(
             status_code=500,
             detail="Chat feldolgozási hiba"
+        )
+
+
+# WebSocket endpoints
+@app.websocket("/ws/chat/{session_id}")
+async def websocket_chat_endpoint(websocket: WebSocket, session_id: str):
+    """
+    WebSocket endpoint a real-time chat kommunikációhoz.
+    
+    Args:
+        websocket: WebSocket objektum
+        session_id: Session azonosító
+    """
+    try:
+        # WebSocket kapcsolat elfogadása
+        await websocket.accept()
+        
+        # Query paraméterek kinyerése
+        user_id = websocket.query_params.get("user_id")
+        
+        # Kapcsolat hozzáadása a manager-hez
+        connection_id = await websocket_manager.connect(websocket, session_id, user_id)
+        
+        # Kapcsolat visszajelzés küldése
+        await websocket.send_json({
+            "type": "connection_established",
+            "data": {
+                "connection_id": connection_id,
+                "session_id": session_id,
+                "user_id": user_id,
+                "timestamp": datetime.now(timezone.utc).isoformat()
+            }
+        })
+        
+        # Üzenetek feldolgozása
+        try:
+            while True:
+                # Üzenet fogadása
+                message_data = await websocket.receive_json()
+                
+                # Üzenet feldolgozása
+                response = await chat_handler.handle_message(websocket, connection_id, message_data)
+                
+                # Válasz küldése
+                await websocket.send_json(response)
+                
+        except WebSocketDisconnect:
+            logger.info(f"WebSocket kapcsolat lezárva: {connection_id}")
+        except Exception as e:
+            logger.error(f"Hiba a WebSocket kommunikációban: {e}")
+            try:
+                await websocket.send_json({
+                    "type": "error",
+                    "data": {
+                        "error_type": "communication_error",
+                        "error_message": "Kommunikációs hiba történt",
+                        "timestamp": datetime.now(timezone.utc).isoformat()
+                    }
+                })
+            except:
+                pass
+        finally:
+            # Kapcsolat eltávolítása
+            await websocket_manager.disconnect(connection_id)
+            
+    except Exception as e:
+        logger.error(f"Hiba a WebSocket endpoint-ban: {e}")
+        try:
+            await websocket.close(code=1011, reason="Internal error")
+        except:
+            pass
+
+
+@app.get("/api/v1/websocket/stats")
+async def websocket_stats():
+    """
+    WebSocket statisztikák lekérése.
+    
+    Returns:
+        WebSocket manager statisztikák
+    """
+    try:
+        stats = websocket_manager.get_stats()
+        return {
+            "websocket_stats": stats,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Hiba a WebSocket statisztikák lekérésekor: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail="Hiba a WebSocket statisztikák lekérésekor"
         )
 
 
