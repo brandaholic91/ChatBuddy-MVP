@@ -639,6 +639,181 @@ class SchemaManager:
             logger.error(f"Hiba a teljes séma beállításakor: {e}")
             return {"error": False}
     
+    def create_users_table(self) -> bool:
+        """Létrehozza a users táblát"""
+        try:
+            # Users tábla létrehozása
+            create_users_table = """
+            CREATE TABLE IF NOT EXISTS users (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                email TEXT UNIQUE NOT NULL,
+                name TEXT,
+                role TEXT DEFAULT 'customer',
+                status TEXT DEFAULT 'active',
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+            """
+            
+            result = self.supabase.execute_query(create_users_table)
+            return result is not None
+            
+        except Exception as e:
+            logger.error(f"Hiba a users tábla létrehozásakor: {e}")
+            return False
+    
+    def create_products_table(self) -> bool:
+        """Létrehozza a products táblát"""
+        try:
+            # Products tábla létrehozása
+            create_products_table = """
+            CREATE TABLE IF NOT EXISTS products (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                name TEXT NOT NULL,
+                description TEXT,
+                price DECIMAL(10,2),
+                brand TEXT,
+                category_id UUID,
+                status TEXT DEFAULT 'active',
+                stock_quantity INTEGER DEFAULT 0,
+                embedding VECTOR(1536),
+                metadata JSONB DEFAULT '{}',
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+            """
+            
+            result = self.supabase.execute_query(create_products_table)
+            return result is not None
+            
+        except Exception as e:
+            logger.error(f"Hiba a products tábla létrehozásakor: {e}")
+            return False
+    
+    def create_all_tables(self) -> Dict[str, bool]:
+        """Létrehozza az összes táblát"""
+        try:
+            results = {}
+            
+            # Alap táblák
+            results["users"] = self.create_users_table()
+            results["products"] = self.create_products_table()
+            results["orders"] = self.create_orders_table()
+            results["chat_sessions"] = self.create_chat_sessions_table()
+            results["audit_logs"] = self.create_audit_logs_table()
+            results["user_consents"] = self.create_user_consents_table()
+            
+            return results
+            
+        except Exception as e:
+            logger.error(f"Hiba az összes tábla létrehozásakor: {e}")
+            return {"error": False}
+    
+    def create_orders_table(self) -> bool:
+        """Létrehozza az orders táblát"""
+        try:
+            create_orders_table = """
+            CREATE TABLE IF NOT EXISTS orders (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                user_id UUID REFERENCES users(id),
+                status TEXT DEFAULT 'pending',
+                total_amount DECIMAL(10,2),
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+            """
+            
+            result = self.supabase.execute_query(create_orders_table)
+            return result is not None
+            
+        except Exception as e:
+            logger.error(f"Hiba az orders tábla létrehozásakor: {e}")
+            return False
+    
+    def create_chat_sessions_table(self) -> bool:
+        """Létrehozza a chat_sessions táblát"""
+        try:
+            create_chat_sessions_table = """
+            CREATE TABLE IF NOT EXISTS chat_sessions (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                user_id UUID REFERENCES users(id),
+                status TEXT DEFAULT 'active',
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+            """
+            
+            result = self.supabase.execute_query(create_chat_sessions_table)
+            return result is not None
+            
+        except Exception as e:
+            logger.error(f"Hiba a chat_sessions tábla létrehozásakor: {e}")
+            return False
+    
+    def create_audit_logs_table(self) -> bool:
+        """Létrehozza az audit_logs táblát"""
+        try:
+            create_audit_logs_table = """
+            CREATE TABLE IF NOT EXISTS audit_logs (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                user_id UUID REFERENCES users(id),
+                action TEXT NOT NULL,
+                table_name TEXT,
+                record_id UUID,
+                old_values JSONB,
+                new_values JSONB,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+            """
+            
+            result = self.supabase.execute_query(create_audit_logs_table)
+            return result is not None
+            
+        except Exception as e:
+            logger.error(f"Hiba az audit_logs tábla létrehozásakor: {e}")
+            return False
+    
+    def create_user_consents_table(self) -> bool:
+        """Létrehozza a user_consents táblát"""
+        try:
+            create_user_consents_table = """
+            CREATE TABLE IF NOT EXISTS user_consents (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                user_id UUID REFERENCES users(id),
+                consent_type TEXT NOT NULL,
+                granted BOOLEAN DEFAULT FALSE,
+                granted_at TIMESTAMP WITH TIME ZONE,
+                revoked_at TIMESTAMP WITH TIME ZONE,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+            """
+            
+            result = self.supabase.execute_query(create_user_consents_table)
+            return result is not None
+            
+        except Exception as e:
+            logger.error(f"Hiba a user_consents tábla létrehozásakor: {e}")
+            return False
+    
+    def validate_schema(self) -> Dict[str, Any]:
+        """Validálja a schema-t"""
+        try:
+            validation = {}
+            
+            # Táblák validálása
+            tables = ["users", "products", "orders", "chat_sessions", "audit_logs", "user_consents"]
+            for table in tables:
+                validation[table] = {
+                    "exists": self.supabase.table_exists(table),
+                    "rls_enabled": self.supabase.check_rls_enabled(table)
+                }
+            
+            return validation
+            
+        except Exception as e:
+            logger.error(f"Hiba a schema validálásakor: {e}")
+            return {"error": str(e)}
+    
     def get_schema_status(self) -> Dict[str, Any]:
         """Visszaadja a schema állapotát"""
         try:

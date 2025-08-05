@@ -1,3 +1,9 @@
+import sys
+import os
+
+# Add project root to the Python path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 """
 Pytest configuration and fixtures for Chatbuddy MVP tests.
 """
@@ -38,6 +44,51 @@ def mock_webshop_client():
     mock_client.create_order = AsyncMock()
     mock_client.update_order = AsyncMock()
     return mock_client
+
+
+import redis.asyncio as redis
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
+
+@pytest.fixture(scope="session")
+def event_loop():
+    """Create an instance of the default event loop for each test session."""
+    loop = asyncio.get_event_loop_policy().new_event_loop()
+    yield loop
+    loop.close()
+
+
+@pytest_asyncio.fixture(scope="function")
+async def redis_test_client():
+    """
+    Fixture to create a real Redis client for testing, connected to a test database.
+    Flushes the test database after the test session.
+    """
+    redis_host = os.getenv("REDIS_HOST", "localhost")
+    redis_port = int(os.getenv("REDIS_PORT", 6379))
+    redis_password = os.getenv("REDIS_PASSWORD", None)
+    test_db = 1  # Use a separate DB for tests
+    
+    try:
+        client = redis.Redis(
+            host=redis_host,
+            port=redis_port,
+            password=redis_password,
+            db=test_db,
+            decode_responses=True  # Automatically decode responses to strings
+        )
+        await client.ping()
+    except redis.exceptions.ConnectionError as e:
+        pytest.fail(f"Redis connection failed: {e}")
+
+    yield client
+
+    # Teardown: flush the test database and close the connection
+    await client.flushdb()
+    await client.close()
 
 
 @pytest.fixture
@@ -278,4 +329,4 @@ def sample_test_data():
                 "total": 80000.0
             }
         ]
-    } 
+    }

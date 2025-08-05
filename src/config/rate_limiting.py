@@ -61,11 +61,11 @@ class RateLimitState:
 class RateLimiter:
     """Rate limiting rendszer."""
     
-    def __init__(self, use_redis: bool = False, redis_client=None):
+    def __init__(self, configs: Optional[Dict[str, RateLimitConfig]] = None, use_redis: bool = False, redis_client=None):
         self.use_redis = use_redis
         self.redis_client = redis_client
         self.limit_states: Dict[str, RateLimitState] = {}
-        self.configs: Dict[str, RateLimitConfig] = self._load_default_configs()
+        self.configs: Dict[str, RateLimitConfig] = configs if configs is not None else self._load_default_configs()
         self.lock = asyncio.Lock()
     
     def _load_default_configs(self) -> Dict[str, RateLimitConfig]:
@@ -188,7 +188,7 @@ class RateLimiter:
             try:
                 config = self.configs.get(config_key)
                 if not config or not config.enabled:
-                    return True, {"reason": "no_limit"}
+                    return True, {"reason": "no_limit", "remaining_requests": -1}
                 
                 # Get current window
                 window_start = self._get_window_start(config.window)

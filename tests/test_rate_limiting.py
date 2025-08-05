@@ -32,7 +32,7 @@ class TestRateLimiter:
                 enabled=True
             )
         }
-        return RateLimiter(configs)
+        return RateLimiter(configs=configs)
     
     @pytest.mark.asyncio
     async def test_rate_limit_config(self, rate_limiter):
@@ -54,10 +54,13 @@ class TestRateLimiter:
     @pytest.mark.asyncio
     async def test_rate_limit_exceeded(self, rate_limiter):
         """Ellenőrzi a rate limit túllépését."""
+        # Temporarily increase burst size to avoid interference
+        rate_limiter.configs["test_user"].burst_size = 20
+
         # Make multiple requests to exceed the limit
         for i in range(10):
             allowed, info = await rate_limiter.check_rate_limit("test_user", "test_user", cost=1.0)
-            assert allowed is True  # First 10 requests should be allowed
+            assert allowed is True, f"Request {i+1} should have been allowed, but was not. Info: {info}"
         
         # 11th request should be blocked
         allowed, info = await rate_limiter.check_rate_limit("test_user", "test_user", cost=1.0)
@@ -70,12 +73,12 @@ class TestRateLimiter:
         # Make burst requests
         for i in range(5):
             allowed, info = await rate_limiter.check_rate_limit("test_user", "test_user", cost=1.0)
-            assert allowed is True  # First 5 burst requests should be allowed
+            assert allowed is True, f"Burst request {i+1} should have been allowed, but was not. Info: {info}"
         
         # 6th burst request should be blocked
         allowed, info = await rate_limiter.check_rate_limit("test_user", "test_user", cost=1.0)
         assert allowed is False
-        assert "burst_limit_exceeded" in info["reason"]
+        assert "burst_limit_exceeded" in info.get("reason", "")
 
 
 class TestRateLimitDecorators:
@@ -95,7 +98,7 @@ class TestRateLimitDecorators:
                 enabled=True
             )
         }
-        return RateLimiter(configs)
+        return RateLimiter(configs=configs)
     
     @pytest.mark.asyncio
     async def test_user_rate_limit_decorator(self, rate_limiter):
@@ -180,7 +183,7 @@ class TestRateLimitPerformance:
                 enabled=True
             )
         }
-        rate_limiter = RateLimiter(configs)
+        rate_limiter = RateLimiter(configs=configs)
         
         # Create multiple concurrent requests
         async def check_rate_limit():
@@ -207,7 +210,7 @@ class TestRateLimitPerformance:
                 enabled=True
             )
         }
-        rate_limiter = RateLimiter(configs)
+        rate_limiter = RateLimiter(configs=configs)
         
         # Perform many rate limit checks
         for i in range(100):
@@ -231,7 +234,7 @@ def test_rate_limit_configuration():
             enabled=True
         )
     }
-    rate_limiter = RateLimiter(configs)
+    rate_limiter = RateLimiter(configs=configs)
     
     # Check configuration
     assert rate_limiter.configs["test_user"].max_requests == 100
@@ -252,7 +255,7 @@ async def test_rate_limit_error_handling():
             enabled=True
         )
     }
-    rate_limiter = RateLimiter(configs)
+    rate_limiter = RateLimiter(configs=configs)
     
     # Test with invalid config key
     allowed, info = await rate_limiter.check_rate_limit("invalid_key", "test_user", cost=1.0)

@@ -11,6 +11,7 @@ This module provides vector database operations:
 import logging
 import asyncio
 import json
+import hashlib
 from typing import List, Dict, Any, Optional, Tuple
 import numpy as np
 from decimal import Decimal
@@ -27,12 +28,14 @@ logger = get_logger(__name__)
 class VectorOperations:
     """Vector műveletek kezelő"""
     
-    def __init__(self, supabase_client: SupabaseClient):
+    def __init__(self, supabase_client: SupabaseClient, openai_api_key: str):
         """Inicializálja a vector operations kezelőt"""
         self.supabase = supabase_client
         self.embedding_dimension = 1536  # OpenAI text-embedding-3-small
+        if not openai_api_key:
+            raise ValueError("OpenAI API kulcs szükséges")
         self.openai_client = AsyncOpenAI(
-            api_key=os.getenv("OPENAI_API_KEY")
+            api_key=openai_api_key
         )
         self.embedding_model = "text-embedding-3-small"
     
@@ -280,7 +283,7 @@ class VectorOperations:
             client = self.supabase.get_client()
             
             # pgvector similarity search query
-            result = client.rpc(
+            result = await client.rpc(
                 "search_products",
                 {
                     "query_embedding": query_embedding,
@@ -332,7 +335,7 @@ class VectorOperations:
             client = self.supabase.get_client()
             
             # Kategória-specifikus similarity search
-            result = client.rpc(
+            result = await client.rpc(
                 "search_products_by_category",
                 {
                     "query_embedding": query_embedding,
@@ -365,7 +368,7 @@ class VectorOperations:
             client = self.supabase.get_client()
             
             # Felhasználói preferenciák lekérdezése
-            user_prefs_result = client.table("user_preferences").select(
+            user_prefs_result = await client.table("user_preferences").select(
                 "product_recommendations, personalized_offers"
             ).eq("user_id", user_id).execute()
             

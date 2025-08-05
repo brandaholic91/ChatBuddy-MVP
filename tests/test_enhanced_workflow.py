@@ -9,6 +9,8 @@ import asyncio
 from unittest.mock import Mock, AsyncMock
 from langchain_core.messages import HumanMessage, AIMessage
 
+from langgraph.types import CachePolicy
+from langgraph.cache.memory import InMemoryCache
 from src.workflows.langgraph_workflow import (
     OptimizedPydanticAIToolNode,
     route_message_enhanced,
@@ -61,8 +63,8 @@ class TestOptimizedPydanticAIToolNode:
     async def test_tool_node_initialization(self, tool_node):
         """Teszt a tool node inicializálását."""
         assert tool_node.agent_name == "test_agent"
-        assert tool_node._agent_cache == {}
-        assert tool_node._dependencies_cache == {}
+        assert tool_node._agent is None
+        assert tool_node._dependencies is None
     
     @pytest.mark.asyncio
     async def test_tool_node_caching(self, tool_node, sample_state, mock_agent_creator):
@@ -70,13 +72,13 @@ class TestOptimizedPydanticAIToolNode:
         # Első hívás
         result1 = await tool_node(sample_state)
         
-        # Második hívás - ugyanazt a cache-t kellene használnia
+        # Második hívás - ugyanazt az agent-et kellene használnia
         result2 = await tool_node(sample_state)
         
         # Ellenőrizzük, hogy csak egyszer hívtuk meg az agent creator-t
         assert mock_agent_creator.call_count == 1
-        assert len(tool_node._agent_cache) == 1
-        assert len(tool_node._dependencies_cache) == 1
+        assert tool_node._agent is not None
+        assert tool_node._dependencies is not None
 
 
 class TestEnhancedRouting:

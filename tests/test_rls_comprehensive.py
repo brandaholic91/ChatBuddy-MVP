@@ -17,6 +17,7 @@ import asyncio
 from unittest.mock import Mock, AsyncMock, patch, MagicMock
 from datetime import datetime, timedelta
 import uuid
+import os
 from typing import Dict, Any, List
 
 from src.integrations.database.rls_policies import RLSPolicyManager
@@ -486,7 +487,8 @@ class TestRLSIntegrationTesting:
         config = SupabaseConfig(
             url="https://test.supabase.co",
             key="test-key",
-            service_role_key="test-service-key"
+            service_role_key="test-service-key",
+            openai_api_key=os.environ.get("OPENAI_API_KEY", "test-api-key")
         )
         
         # Mock the DatabaseSetup to avoid actual Supabase connection

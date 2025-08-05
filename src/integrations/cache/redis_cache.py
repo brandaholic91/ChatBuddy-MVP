@@ -85,16 +85,25 @@ class CacheEntry:
 class RedisCacheManager:
     """Redis cache kezelő"""
     
-    def __init__(self, redis_url: Optional[str] = None, config: Optional[CacheConfig] = None):
+    def __init__(self, redis_url: Optional[str] = None, config: Optional[CacheConfig] = None, redis_client: Optional[redis.Redis] = None):
         """Inicializálja a Redis cache kezelőt"""
         self.redis_url = redis_url or os.getenv("REDIS_URL", "redis://localhost:6379")
         self.config = config or CacheConfig()
-        self.redis_client: Optional[redis.Redis] = None
+        self.redis_client = redis_client
         self._connection_retries = 3
         self._connection_retry_delay = 1
         
     async def connect(self) -> bool:
         """Kapcsolódik a Redis szerverhez"""
+        if self.redis_client:
+            try:
+                await self.redis_client.ping()
+                logger.info("✅ Redis kapcsolat már létezik és aktív")
+                return True
+            except (RedisError, ConnectionError):
+                logger.warning("Meglévő Redis kapcsolat nem aktív, újracsatlakozás...")
+                self.redis_client = None
+
         try:
             self.redis_client = redis.from_url(
                 self.redis_url,
@@ -105,7 +114,6 @@ class RedisCacheManager:
                 health_check_interval=30
             )
             
-            # Kapcsolat tesztelése
             await self.redis_client.ping()
             logger.info("✅ Redis kapcsolat sikeres")
             return True
@@ -167,8 +175,8 @@ class RedisCacheManager:
 class SessionCache(RedisCacheManager):
     """Session cache kezelő"""
     
-    def __init__(self, redis_url: Optional[str] = None, config: Optional[CacheConfig] = None):
-        super().__init__(redis_url, config)
+    def __init__(self, redis_url: Optional[str] = None, config: Optional[CacheConfig] = None, redis_client: Optional[redis.Redis] = None):
+        super().__init__(redis_url, config, redis_client)
         self.session_prefix = "session"
         self.user_sessions_prefix = "user_sessions"
     
@@ -310,8 +318,8 @@ class SessionCache(RedisCacheManager):
 class PerformanceCache(RedisCacheManager):
     """Performance cache kezelő"""
     
-    def __init__(self, redis_url: Optional[str] = None, config: Optional[CacheConfig] = None):
-        super().__init__(redis_url, config)
+    def __init__(self, redis_url: Optional[str] = None, config: Optional[CacheConfig] = None, redis_client: Optional[redis.Redis] = None):
+        super().__init__(redis_url, config, redis_client)
         self.agent_response_prefix = "agent_response"
         self.product_info_prefix = "product_info"
         self.search_result_prefix = "search_result"
@@ -492,8 +500,8 @@ class PerformanceCache(RedisCacheManager):
 class RateLimitCache(RedisCacheManager):
     """Rate limiting cache kezelő"""
     
-    def __init__(self, redis_url: Optional[str] = None, config: Optional[CacheConfig] = None):
-        super().__init__(redis_url, config)
+    def __init__(self, redis_url: Optional[str] = None, config: Optional[CacheConfig] = None, redis_client: Optional[redis.Redis] = None):
+        super().__init__(redis_url, config, redis_client)
         self.rate_limit_prefix = "rate_limit"
         self.ip_limit_prefix = "ip_limit"
         self.user_limit_prefix = "user_limit"
@@ -612,12 +620,16 @@ class RateLimitCache(RedisCacheManager):
 class RedisCacheService:
     """Redis cache szolgáltatás - fő osztály"""
     
-    def __init__(self, redis_url: Optional[str] = None, config: Optional[CacheConfig] = None):
+    def __init__(self, config: Optional[CacheConfig] = None, redis_client: Optional[redis.Redis] = None):
         """Inicializálja a Redis cache szolgáltatást"""
         self.config = config or CacheConfig()
-        self.session_cache = SessionCache(redis_url, config)
-        self.performance_cache = PerformanceCache(redis_url, config)
-        self.rate_limit_cache = RateLimitCache(redis_url, config)
+        redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
+        
+        # Ha van külső kliens, azt használjuk, egyébként a RedisCacheManager hozza létre
+        self.session_cache = SessionCache(redis_url, self.config, redis_client=redis_client)
+        self.performance_cache = PerformanceCache(redis_url, self.config, redis_client=self.session_cache.redis_client)
+        self.rate_limit_cache = RateLimitCache(redis_url, self.config, redis_client=self.session_cache.redis_client)
+        
         self._cleanup_task: Optional[asyncio.Task] = None
     
     async def initialize(self) -> bool:

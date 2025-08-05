@@ -131,7 +131,7 @@ class TestDatabaseIntegration:
         
         # Initialize vector operations
         supabase_client = SupabaseClient()
-        vector_ops = VectorOperations(supabase_client)
+        vector_ops = VectorOperations(supabase_client, os.environ["OPENAI_API_KEY"])
         
         # Mock the search method
         mock_supabase_client.rpc.return_value.execute.return_value.data = []

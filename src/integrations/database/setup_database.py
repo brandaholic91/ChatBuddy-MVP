@@ -31,7 +31,7 @@ class DatabaseSetup:
         self.supabase = SupabaseClient(config)
         self.schema_manager = SchemaManager(self.supabase)
         self.rls_manager = RLSPolicyManager(self.supabase)
-        self.vector_ops = VectorOperations(self.supabase)
+        self.vector_ops = VectorOperations(self.supabase, openai_api_key=config.openai_api_key)
     
     async def setup_complete_database(self) -> Dict[str, Any]:
         """Teljes adatbázis setup végrehajtása"""
@@ -82,31 +82,40 @@ class DatabaseSetup:
             
             # 4. Vector setup
             logger.info("🧠 Vector műveletek beállítása...")
-            vector_stats = await self.vector_ops.get_vector_statistics()
-            results["details"]["vector_stats"] = vector_stats
-            
-            if vector_stats:
-                results["vector_setup"] = True
-                logger.info("✅ Vector műveletek beállítva")
+            try:
+                vector_stats = await self.vector_ops.get_vector_statistics()
+                results["details"]["vector_stats"] = vector_stats
+                
+                if vector_stats:
+                    results["vector_setup"] = True
+                    logger.info("✅ Vector műveletek beállítva")
+            except Exception as e:
+                logger.error(f"❌ Vector setup hiba: {e}")
+                results["vector_setup"] = False
+                results["details"]["vector_stats"] = {"error": str(e)}
             
             # 5. Validáció
             logger.info("🔍 Adatbázis validálása...")
-            schema_validation = self.schema_manager.validate_schema()
-            policy_validation = self.rls_manager.validate_policies()
-            
-            results["details"]["schema_validation"] = schema_validation
-            results["details"]["policy_validation"] = policy_validation
-            
-            # Validáció eredménye
-            valid_tables = sum(1 for table in schema_validation.values() 
-                             if table.get("exists", False))
-            total_tables = len(schema_validation)
-            
-            if valid_tables == total_tables:
-                results["validation"] = True
-                logger.info(f"✅ Validáció sikeres: {valid_tables}/{total_tables} tábla")
-            else:
-                logger.error(f"❌ Validáció sikertelen: {valid_tables}/{total_tables} tábla")
+            try:
+                schema_validation = self.schema_manager.validate_schema()
+                policy_validation = self.rls_manager.validate_policies()
+                
+                results["details"]["schema_validation"] = schema_validation
+                results["details"]["policy_validation"] = policy_validation
+                
+                # Validáció eredménye
+                valid_tables = sum(1 for table in schema_validation.values() 
+                                 if table.get("exists", False))
+                total_tables = len(schema_validation)
+                
+                if valid_tables == total_tables:
+                    results["validation"] = True
+                    logger.info(f"✅ Validáció sikeres: {valid_tables}/{total_tables} tábla")
+                else:
+                    logger.error(f"❌ Validáció sikertelen: {valid_tables}/{total_tables} tábla")
+            except Exception as e:
+                logger.error(f"❌ Validáció hiba: {e}")
+                results["validation"] = False
             
             # 6. Összefoglaló
             self._print_setup_summary(results)

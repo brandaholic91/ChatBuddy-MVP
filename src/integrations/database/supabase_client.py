@@ -25,6 +25,7 @@ class SupabaseConfig(BaseModel):
     url: str = Field(..., description="Supabase projekt URL")
     key: str = Field(..., description="Supabase API kulcs")
     service_role_key: Optional[str] = Field(default=None, description="Service role kulcs")
+    openai_api_key: Optional[str] = Field(default=None, description="OpenAI API kulcs")
     
     class Config:
         env_prefix = "SUPABASE_"
@@ -197,4 +198,67 @@ class SupabaseClient:
             return result[0]["relrowsecurity"] if result else False
         except Exception as e:
             logger.error(f"RLS ellenőrzési hiba: {e}")
+            return False
+    
+    def check_pgvector_extension(self) -> bool:
+        """Ellenőrzi, hogy a pgvector extension engedélyezve van-e"""
+        try:
+            query = """
+            SELECT extname 
+            FROM pg_extension 
+            WHERE extname = 'vector';
+            """
+            
+            result = self.execute_query(query)
+            return len(result) > 0
+        except Exception as e:
+            logger.error(f"pgvector extension ellenőrzési hiba: {e}")
+            return False
+    
+    def check_vector_functions(self) -> bool:
+        """Ellenőrzi, hogy a vector függvények léteznek-e"""
+        try:
+            query = """
+            SELECT proname 
+            FROM pg_proc 
+            WHERE proname IN ('search_products', 'search_products_by_category', 'hybrid_search');
+            """
+            
+            result = self.execute_query(query)
+            return len(result) >= 3  # Legalább 3 függvénynek kell lennie
+        except Exception as e:
+            logger.error(f"Vector függvények ellenőrzési hiba: {e}")
+            return False
+    
+    def check_vector_indexes(self) -> bool:
+        """Ellenőrzi, hogy a vector indexek léteznek-e"""
+        try:
+            query = """
+            SELECT indexname 
+            FROM pg_indexes 
+            WHERE tablename = 'products' 
+            AND indexname LIKE '%embedding%';
+            """
+            
+            result = self.execute_query(query)
+            return len(result) > 0
+        except Exception as e:
+            logger.error(f"Vector indexek ellenőrzési hiba: {e}")
+            return False
+    
+    def table_exists(self, table_name: str) -> bool:
+        """Ellenőrzi, hogy egy tábla létezik-e"""
+        try:
+            query = """
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_schema = 'public' 
+                AND table_name = %s
+            ) as exists;
+            """
+            
+            result = self.execute_query(query, {"table_name": table_name})
+            return result[0]["exists"] if result else False
+        except Exception as e:
+            logger.error(f"Tábla létezés ellenőrzési hiba: {e}")
             return False 
