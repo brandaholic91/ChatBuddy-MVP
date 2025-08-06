@@ -18,7 +18,7 @@ from langchain_openai import ChatOpenAI
 from ..models.agent import AgentType, AgentResponse, LangGraphState
 from ..models.user import User
 from ..utils.state_management import create_initial_state, get_state_summary
-from .langgraph_workflow import get_enhanced_workflow_manager
+from .langgraph_workflow_v2 import get_correct_workflow_manager
 # Security and audit imports
 from ..config.security import get_security_config, get_threat_detector, InputValidator
 from ..config.audit_logging import get_audit_logger, log_agent_interaction
@@ -57,7 +57,7 @@ class CoordinatorAgent:
         """Koordinátor Agent inicializálása."""
         self.llm = llm
         self.verbose = verbose
-        self._workflow_manager = get_enhanced_workflow_manager()
+        self._workflow_manager = get_correct_workflow_manager()
         # Initialize security and audit components
         self._security_config = get_security_config()
         self._threat_detector = get_threat_detector()
@@ -176,26 +176,22 @@ class CoordinatorAgent:
                     gdpr_compliance=self._gdpr_compliance
                 )
             
-            # 7. Process message through enhanced LangGraph workflow
-            initial_state = create_initial_state(
+            # 7. Process message through correct LangGraph workflow
+            user_context = {
+                "user_id": user.id if user else None,
+                "email": user.email if user else None,
+                "phone": getattr(user, 'phone', None) if user else None,
+                "preferences": getattr(user, 'preferences', {}) if user else {},
+                "supabase_client": dependencies.supabase_client,
+                "webshop_api": dependencies.webshop_api,
+                "audit_logger": dependencies.audit_logger
+            }
+            
+            final_state = await self._workflow_manager.process_message(
                 user_message=message,
-                user_context={
-                    "user_id": user.id if user else None,
-                    "email": user.email if user else None,
-                    "phone": getattr(user, 'phone', None) if user else None,
-                    "preferences": getattr(user, 'preferences', {}) if user else {},
-                    "supabase_client": dependencies.supabase_client,
-                    "webshop_api": dependencies.webshop_api
-                },
-                session_data={
-                    "session_id": session_id,
-                    "timestamp": start_time
-                },
-                security_context=dependencies.security_context,
-                audit_logger=dependencies.audit_logger,
-                gdpr_compliance=dependencies.gdpr_compliance
+                user_context=user_context,
+                security_context=dependencies.security_context
             )
-            final_state = await self._workflow_manager.process_message(initial_state)
             
             # 8. Extract response from final state
             response_text = self._extract_response_from_state(final_state)
@@ -288,18 +284,27 @@ class CoordinatorAgent:
             
             return error_response
     
-    def _extract_response_from_state(self, state: LangGraphState) -> str:
+    def _extract_response_from_state(self, state) -> str:
         """Válasz kinyerése a LangGraph state-ből."""
         try:
-            if state.get("messages") and len(state["messages"]) > 1:
+            # Check agent responses first (new v2 structure)
+            if hasattr(state, 'get') and state.get("agent_responses"):
+                active_agent = state.get("active_agent")
+                if active_agent and active_agent in state["agent_responses"]:
+                    agent_response = state["agent_responses"][active_agent]
+                    if isinstance(agent_response, dict) and "response_text" in agent_response:
+                        return agent_response["response_text"]
+            
+            # Fallback to messages (compatible with both old and new)
+            if hasattr(state, 'get') and state.get("messages") and len(state["messages"]) > 1:
                 last_message = state["messages"][-1]
                 if isinstance(last_message, AIMessage):
                     return last_message.content
                 elif hasattr(last_message, 'content'):
                     return str(last_message.content)
             
-            # Fallback to error message if available
-            if state.get("error_message"):
+            # Legacy fallback
+            if hasattr(state, 'get') and state.get("error_message"):
                 return state["error_message"]
             
             return "Sajnálom, nem sikerült válaszolni."
@@ -307,18 +312,27 @@ class CoordinatorAgent:
         except Exception as e:
             return f"Hiba a válasz kinyerésekor: {str(e)}"
     
-    def _extract_confidence_from_state(self, state: LangGraphState) -> float:
+    def _extract_confidence_from_state(self, state) -> float:
         """Bizonyosság kinyerése a LangGraph state-ből."""
         try:
-            # Try to get confidence from metadata
-            metadata = state.get("metadata", {})
-            if "confidence" in metadata:
-                return float(metadata["confidence"])
+            # Check agent responses first (new v2 structure)
+            if hasattr(state, 'get') and state.get("agent_responses"):
+                active_agent = state.get("active_agent")
+                if active_agent and active_agent in state["agent_responses"]:
+                    agent_response = state["agent_responses"][active_agent]
+                    if isinstance(agent_response, dict) and "confidence" in agent_response:
+                        return float(agent_response["confidence"])
             
-            # Try to get from agent-specific metadata
-            for key, value in metadata.items():
-                if isinstance(value, dict) and "confidence" in value:
-                    return float(value["confidence"])
+            # Try to get confidence from metadata (legacy)
+            if hasattr(state, 'get'):
+                metadata = state.get("metadata", {})
+                if "confidence" in metadata:
+                    return float(metadata["confidence"])
+                
+                # Try to get from agent-specific metadata
+                for key, value in metadata.items():
+                    if isinstance(value, dict) and "confidence" in value:
+                        return float(value["confidence"])
             
             # Default confidence
             return 0.8
@@ -326,32 +340,39 @@ class CoordinatorAgent:
         except Exception:
             return 0.5
     
-    def _extract_metadata_from_state(self, state: LangGraphState) -> Dict[str, Any]:
+    def _extract_metadata_from_state(self, state) -> Dict[str, Any]:
         """Metaadatok kinyerése a LangGraph state-ből."""
         try:
-            metadata = state.get("metadata", {})
-            
-            # Extract agent-specific information
             extracted_metadata = {}
             
+            if not hasattr(state, 'get'):
+                return {"metadata_extraction_error": "Invalid state object"}
+            
+            # Extract from new v2 structure
+            if state.get("agent_responses"):
+                active_agent = state.get("active_agent")
+                if active_agent and active_agent in state["agent_responses"]:
+                    agent_response = state["agent_responses"][active_agent]
+                    if isinstance(agent_response, dict) and "metadata" in agent_response:
+                        extracted_metadata.update(agent_response["metadata"])
+            
             # Agent type
-            if "current_agent" in state:
+            if state.get("active_agent"):
+                extracted_metadata["agent_type"] = state["active_agent"]
+            elif state.get("current_agent"):
                 extracted_metadata["agent_type"] = state["current_agent"]
             
-            # Error information
-            if "error_message" in state:
-                extracted_metadata["error"] = state["error_message"]
+            # Workflow steps
+            if state.get("workflow_steps"):
+                extracted_metadata["workflow_steps"] = state["workflow_steps"]
             
             # User context
-            if "user_context" in state:
+            if state.get("user_context"):
                 extracted_metadata["user_context"] = state["user_context"]
             
-            # Session data
-            if "session_data" in state:
-                extracted_metadata["session_data"] = state["session_data"]
-            
-            # Merge with existing metadata
-            extracted_metadata.update(metadata)
+            # Legacy metadata support
+            if state.get("metadata"):
+                extracted_metadata.update(state["metadata"])
             
             return extracted_metadata
             
@@ -403,13 +424,15 @@ class CoordinatorAgent:
             return {
                 "agent_type": "coordinator",
                 "status": "active",
-                "workflow_manager": "enhanced_initialized",
+                "workflow_manager": "correct_langgraph_pydantic_ai_integration",
                 "llm_available": self.llm is not None,
                 "verbose_mode": self.verbose,
                 "security_enabled": True,
                 "audit_logging_enabled": True,
                 "gdpr_compliance_enabled": True,
-                "enhanced_workflow": True,
+                "workflow_version": "v2_correct_integration",
+                "architecture_pattern": "langgraph_with_pydantic_ai_tools",
+                "follows_article_pattern": True,
                 "redis_cache_enabled": True,
                 "session_cache_enabled": True,
                 "performance_cache_enabled": True

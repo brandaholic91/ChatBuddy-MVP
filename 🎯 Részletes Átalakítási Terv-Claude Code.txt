@@ -1,0 +1,137 @@
+🎯 Részletes Átalakítási Terv
+
+  FÁZIS 1: Előkészítés és Backup (1 nap)
+
+  1.1 Biztonsági mentés
+  git branch feature/correct-langgraph-pydantic-integration
+  git checkout feature/correct-langgraph-pydantic-integration
+
+  1.2 Teszt baseline létrehozása
+  pytest tests/ --tb=short > baseline_test_results.txt
+
+  1.3 Függőség ellenőrzés
+  - requirements.txt frissítése szükséges dependenciákkal
+  - OpenAI API kulcsok ellenőrzése
+
+  ---
+  FÁZIS 2: Core Workflow Refactoring (2-3 nap)
+
+  2.1 Új LangGraph Workflow implementáció
+  Fájl: src/workflows/langgraph_workflow_v2.py
+
+  Kulcs változtatások:
+  - OptimizedPydanticAIToolNode eltávolítása
+  - Pydantic AI agent-ek közvetlen tool-ként való integrálása
+  - Egyszerűsített state management
+  - Caching áthelyezése külön rétegbe
+
+  2.2 Agent integráció javítása
+  Érintett fájlok:
+  - src/agents/general/agent.py - singleton javítás
+  - src/agents/marketing/agent.py - singleton javítás
+  - src/agents/product_info/agent.py - tool export javítás
+  - src/agents/order_status/agent.py - tool export javítás
+  - src/agents/recommendations/agent.py - tool export javítás
+
+  Változtatások:
+  - Helyes singleton pattern implementáció
+  - Tool-ok külön exportálása LangGraph számára
+  - RunContext helyes használata
+
+  2.3 Coordinator egyszerűsítése
+  Fájl: src/workflows/coordinator.py
+
+  Változtatások:
+  - Workflow manager váltás az új implementációra
+  - Cache handling egyszerűsítése
+  - Error handling finomhangolása
+
+  ---
+  FÁZIS 3: Testing Framework Update (1-2 nap)
+
+  3.1 Workflow tesztek átírása
+  Fájl: tests/test_langgraph_workflow.py
+
+  Változtatások:
+  - Új workflow tesztelése
+  - Agent tool integráció tesztelése
+  - Performance tesztek frissítése
+
+  3.2 Agent tesztek frissítése
+  Érintett fájlok:
+  - tests/test_*_agent.py - mock handling javítása
+  - tests/test_enhanced_workflow.py - új workflow tesztelése
+
+  3.3 Integration tesztek
+  Fájl: tests/test_integration_comprehensive.py
+
+  Változtatások:
+  - End-to-end workflow tesztelése
+  - Cache működés validálása
+
+  ---
+  FÁZIS 4: Documentation és Cleanup (1 nap)
+
+  4.1 Régi kód eltávolítása
+  - OptimizedPydanticAIToolNode törlése
+  - Nem használt függvények cleanup-ja
+  - Import-ok tisztítása
+
+  4.2 Dokumentáció frissítése
+  - README.md aktualizálása
+  - API dokumentáció frissítése
+  - Architekturális diagramok módosítása
+
+  ---
+  FÁZIS 5: Production Testing (1-2 nap)
+
+  5.1 Performance tesztelés
+  - Load testing az új workflow-val
+  - Memory usage mérése
+  - Redis cache hatékonyság validálása
+
+  5.2 Security validation
+  - Penetration testing
+  - GDPR compliance ellenőrzése
+  - Audit log működés validálása
+
+  ---
+  📋 Implementációs Sorrennd
+
+  Prioritás 1: Kritikus (Workflow Core)
+
+  1. src/workflows/langgraph_workflow_v2.py - új implementáció
+  2. Agent singleton-ok javítása
+  3. Alapvető tesztek átírása
+
+  Prioritás 2: Közepes (Integration)
+
+  1. Coordinator frissítése
+  2. Cache handling átállítása
+  3. Integration tesztek
+
+  Prioritás 3: Alacsony (Polish)
+
+  1. Documentation
+  2. Cleanup
+  3. Performance optimization
+
+  ---
+  🚨 Kockázatok és Mitigáció
+
+  Kockázat: Teszt failure-k
+  Mitigáció: Fokozatos rollout, feature flag-ek használata
+
+  Kockázat: Performance romlás
+  Mitigáció: Benchmark-ek készítése minden fázisnál
+
+  Kockázat: Dependency conflicts
+  Mitigáció: Virtual environment, requirements.txt validáció
+
+  ---
+  ⏰ Időbecslés: 6-9 munkanap
+
+  Gyors track (6 nap): Minimális testing, egyszerűsített implementáció
+  Biztonságos track (9 nap): Teljes testing, dokumentáció, performance optimization
+
+  A kód használható lesz az átalakítás során is, mivel új fájlokat hozunk létre és fokozatosan váltunk át. A critical path a workflow core átírása - ez a legnagyobb kockázat, de ezt feature branch-ben biztonságosan lehet tesztelni.

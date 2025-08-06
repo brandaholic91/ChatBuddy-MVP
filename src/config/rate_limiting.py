@@ -309,7 +309,8 @@ class RateLimiter:
             state_data = await self.redis_client.get(f"rate_limit:{state_key}")
             
             if state_data:
-                state_dict = eval(state_data)  # In production, use proper JSON deserialization
+                import json
+                state_dict = json.loads(state_data)  # Safe JSON deserialization
                 state = RateLimitState(**state_dict)
                 
                 # Reset if window changed

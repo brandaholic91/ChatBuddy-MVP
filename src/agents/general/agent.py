@@ -32,6 +32,9 @@ class GeneralResponse(BaseModel):
     metadata: Dict[str, Any] = Field(description="Metaadatok", default_factory=dict)
 
 
+# Global agent instance
+_general_agent = None
+
 def create_general_agent() -> Agent:
     """
     General agent létrehozása Pydantic AI-val.
@@ -39,6 +42,11 @@ def create_general_agent() -> Agent:
     Returns:
         General agent
     """
+    global _general_agent
+    
+    if _general_agent is not None:
+        return _general_agent
+    
     agent = Agent(
         'openai:gpt-4o',
         deps_type=GeneralDependencies,
@@ -309,6 +317,8 @@ def create_general_agent() -> Agent:
             # TODO: Implementálni error handling-et
             raise Exception(f"Hiba a felhasználói útmutató lekérésekor: {str(e)}")
     
+    # Store globally and return
+    _general_agent = agent
     return agent
 
 
