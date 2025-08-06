@@ -177,16 +177,18 @@ class CoordinatorAgent:
                 
                 cached_response = await self._performance_cache.get_cached_agent_response(cache_key)
                 if cached_response:
-                    # Return cached response
-                    return AgentResponse(
-                        agent_type=AgentType.COORDINATOR,
-                        response_text=cached_response.get("response_text", "Cache-elt válasz"),
-                        confidence=cached_response.get("confidence", 0.8),
-                        metadata={
-                            **cached_response.get("metadata", {}),
-                            "cached": True,
-                            "cache_source": "redis",
-                            "session_id": session_id,
+                    # Check if cache response is valid
+                    if isinstance(cached_response, dict) and "error" not in cached_response:
+                        # Return cached response
+                        return AgentResponse(
+                            agent_type=AgentType.COORDINATOR,
+                            response_text=cached_response.get("response_text", "Cache-elt válasz"),
+                            confidence=cached_response.get("confidence", 0.8),
+                            metadata={
+                                **cached_response.get("metadata", {}),
+                                "cached": True,
+                                "cache_source": "redis",
+                                "session_id": session_id,
                             "user_id": user.id if user else None
                         }
                     )
@@ -323,6 +325,14 @@ class CoordinatorAgent:
                     if isinstance(agent_response, dict) and "response_text" in agent_response:
                         return agent_response["response_text"]
             
+            # Check current_agent as fallback
+            if hasattr(state, 'get') and state.get("current_agent"):
+                active_agent = state.get("current_agent")
+                if active_agent and active_agent in state.get("agent_responses", {}):
+                    agent_response = state["agent_responses"][active_agent]
+                    if isinstance(agent_response, dict) and "response_text" in agent_response:
+                        return agent_response["response_text"]
+            
             # Fallback to messages (compatible with both old and new)
             if hasattr(state, 'get') and state.get("messages") and len(state["messages"]) > 1:
                 last_message = state["messages"][-1]
@@ -388,7 +398,7 @@ class CoordinatorAgent:
             if state.get("active_agent"):
                 extracted_metadata["agent_type"] = state["active_agent"]
             elif state.get("current_agent"):
-                extracted_metadata["agent_type"] = state["current_agent"]
+                extracted_metadata["agent_type"] = state.get("current_agent")
             
             # Workflow steps
             if state.get("workflow_steps"):

@@ -287,8 +287,16 @@ class OptimizedRedisConnectionPool:
     def _serialize_value(self, value: Any) -> bytes:
         """Serialize value to bytes."""
         try:
-            if isinstance(value, (str, int, float, bool)):
+            # Always try JSON first for better compatibility
+            if isinstance(value, (str, int, float, bool, type(None))):
                 return json.dumps(value).encode('utf-8')
+            elif isinstance(value, (dict, list)):
+                # Try JSON for dict/list - better compatibility
+                try:
+                    return json.dumps(value).encode('utf-8')
+                except (TypeError, ValueError):
+                    # Fall back to pickle if JSON fails
+                    return pickle.dumps(value)
             else:
                 # Use pickle for complex objects
                 return pickle.dumps(value)
@@ -300,10 +308,10 @@ class OptimizedRedisConnectionPool:
         """Deserialize bytes to value."""
         try:
             # Check if it's JSON or pickle based on metadata
-            if metadata.get('type') == 'json':
-                return json.loads(data.decode('utf-8'))
-            else:
+            if metadata.get('type') == 'pickle':
                 return pickle.loads(data)
+            else:
+                return json.loads(data.decode('utf-8'))
         except Exception as e:
             logger.error(f"Deserialization failed: {e}")
             return data.decode('utf-8', errors='ignore')

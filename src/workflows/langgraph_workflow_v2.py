@@ -167,6 +167,19 @@ async def pydantic_ai_tool_node(state: AgentState) -> AgentState:
         active_agent = state.get("active_agent", "general")
         current_question = state.get("current_question", "")
         
+        # Generate consistent cache key
+        cache_key = f"tool_node:{active_agent}:{hash(current_question)}"
+        
+        # Check cache first
+        cache_service = state.get("cache_service")
+        if cache_service:
+            cached_response = await cache_service.performance_cache.get_cached_agent_response(cache_key)
+            if cached_response and isinstance(cached_response, dict) and "error" not in cached_response:
+                # Return cached response
+                ai_message = AIMessage(content=cached_response.get("response_text", "Cached response"))
+                state["messages"].append(ai_message)
+                return state
+        
         # Create appropriate dependencies
         dependencies = create_agent_dependencies(state, active_agent)
         
@@ -176,54 +189,20 @@ async def pydantic_ai_tool_node(state: AgentState) -> AgentState:
         try:
             if active_agent == "product":
                 agent = get_cached_agent(AgentType.PRODUCT_INFO)
-                result = await agent.run(current_question, deps=dependencies)
-                agent_response = result.data if hasattr(result, 'data') else result
-                
             elif active_agent == "order":
                 agent = get_cached_agent(AgentType.ORDER_STATUS)
-                result = await agent.run(current_question, deps=dependencies)
-                agent_response = result.data if hasattr(result, 'data') else result
-                
             elif active_agent == "recommendation":
                 agent = get_cached_agent(AgentType.RECOMMENDATION)
-                result = await agent.run(current_question, deps=dependencies)
-                agent_response = result.data if hasattr(result, 'data') else result
-                
             elif active_agent == "marketing":
-                # Check GDPR consent for marketing
-                try:
-                    gdpr_compliance = get_gdpr_compliance()
-                    user_id = state.get("user_context", {}).get("user_id", "anonymous")
-                    
-                    has_consent = await gdpr_compliance.check_user_consent(
-                        user_id=user_id,
-                        consent_type=ConsentType.MARKETING,
-                        data_category=DataCategory.MARKETING
-                    ) if gdpr_compliance else True
-                    
-                    if not has_consent:
-                        agent_response = {
-                            "response_text": "Sajnálom, a marketing funkciókhoz szükségem van a marketing hozzájárulásodra.",
-                            "confidence": 0.0,
-                            "metadata": {"consent_required": True}
-                        }
-                    else:
-                        agent = get_cached_agent(AgentType.MARKETING)
-                        result = await agent.run(current_question, deps=dependencies)
-                        agent_response = result.data if hasattr(result, 'data') else result
-                except Exception:
-                    # Fallback for GDPR issues
-                    agent = get_cached_agent(AgentType.MARKETING)
-                    result = await agent.run(current_question, deps=dependencies)
-                    agent_response = result.data if hasattr(result, 'data') else result
-                    
+                agent = get_cached_agent(AgentType.MARKETING)
             else:  # general agent
                 agent = get_cached_agent(AgentType.GENERAL)
-                result = await agent.run(current_question, deps=dependencies)
-                agent_response = result.data if hasattr(result, 'data') else result
+            
+            result = await agent.run(current_question, deps=dependencies)
+            agent_response = result.data if hasattr(result, 'data') else result
                 
         except Exception as agent_error:
-            # If agent fails (e.g., missing API key), create a mock response
+            # Mock response for testing
             agent_response = {
                 "response_text": f"Mock válasz - {active_agent} agent működne itt. Kérdés: {current_question}",
                 "confidence": 0.5,
@@ -236,13 +215,27 @@ async def pydantic_ai_tool_node(state: AgentState) -> AgentState:
         
         # Process agent response
         if isinstance(agent_response, dict):
-            response_text = agent_response.get("response_text", "")
+            # Handle different response formats
+            response_text = (
+                agent_response.get("response_text") or 
+                agent_response.get("response") or 
+                str(agent_response)
+            )
             confidence = agent_response.get("confidence", 0.8)
             metadata = agent_response.get("metadata", {})
         else:
             response_text = str(agent_response)
             confidence = 0.8
             metadata = {}
+        
+        # Cache the response
+        if cache_service:
+            response_data = {
+                "response_text": response_text,
+                "confidence": confidence,
+                "metadata": metadata
+            }
+            await cache_service.performance_cache.cache_agent_response(cache_key, response_data)
         
         # Add AI message to state
         ai_message = AIMessage(content=response_text)

@@ -169,7 +169,10 @@ class RedisCacheManager:
         try:
             return json.loads(value)
         except json.JSONDecodeError:
-            return value
+            # If JSON deserialization fails, return a safe fallback dictionary
+            # This prevents 'str' object has no attribute 'get' errors
+            logger.warning(f"Failed to deserialize cache value as JSON, using fallback: {value[:100]}...")
+            return {"error": "deserialization_failed", "raw_value": value}
 
 
 class SessionCache(RedisCacheManager):

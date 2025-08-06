@@ -182,29 +182,38 @@ class TestAgentIntegration:
     @pytest.mark.asyncio
     @patch('src.agents.marketing.agent.Agent')
     async def test_marketing_agent_integration(self, mock_agent, test_model):
-        """Test marketing agent integration."""
-        # Mock the agent
-        mock_agent_instance = Mock()
-        mock_agent_instance.run = AsyncMock(return_value=Mock(
+        """Test marketing agent integration with mocked API calls."""
+        # Mock the agent run result
+        mock_result = Mock()
+        mock_result.output = Mock(
             response_text="Itt vannak a legújabb akciók!",
-            confidence=0.8
-        ))
+            confidence=0.8,
+            promotions=[],
+            newsletters=[]
+        )
+        
+        # Mock the agent instance
+        mock_agent_instance = Mock()
+        mock_agent_instance.run = AsyncMock(return_value=mock_result)
         mock_agent.return_value = mock_agent_instance
         
-        # Test marketing agent function
+        # Test marketing agent function with mocked dependencies
         dependencies = MarketingDependencies(
             user_context={"user_id": "test_user"},
-            supabase_client=None,
-            webshop_api=None
+            supabase_client=Mock(),  # Mock Supabase client
+            webshop_api=Mock()       # Mock WebShop API
         )
         
-        response = await call_marketing_agent(
-            message="Szeretnék kapni a legújabb akciókat",
-            dependencies=dependencies
-        )
+        # Mock the create_marketing_agent to return our mock
+        with patch('src.agents.marketing.agent.create_marketing_agent', return_value=mock_agent_instance):
+            response = await call_marketing_agent(
+                message="Szeretnék kapni a legújabb akciókat",
+                dependencies=dependencies
+            )
+            
         assert response is not None
         assert hasattr(response, 'response_text')
-        assert hasattr(response, 'confidence')
+        assert response.response_text == "Itt vannak a legújabb akciók!"
 
 
 class TestErrorHandlingIntegration:

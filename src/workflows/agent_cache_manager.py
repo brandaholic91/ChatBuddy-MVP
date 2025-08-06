@@ -142,6 +142,7 @@ class AgentCacheManager:
             AgentType.RECOMMENDATION: create_recommendation_agent,
             AgentType.MARKETING: create_marketing_agent,
             AgentType.SOCIAL_MEDIA: create_social_media_agent,
+            AgentType.COORDINATOR: create_general_agent,  # Coordinator uses general agent
         }
         
         if agent_type not in agent_creators:

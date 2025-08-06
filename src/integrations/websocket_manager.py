@@ -389,27 +389,40 @@ class ChatWebSocketHandler:
             await self._update_session_cache(session)
             
             # Koordinátor agent hívása
-            user = None
-            if user_id:
-                user = User(id=user_id, email="user@example.com")  # Placeholder
+            try:
+                user = None
+                if user_id:
+                    user = User(id=user_id, email="user@example.com")  # Placeholder
+                
+                agent_response = await process_coordinator_message(
+                    message=content,
+                    user=user,
+                    session_id=session_id
+                )
+            except Exception as e:
+                logger.error(f"Hiba a coordinator agent hívásakor: {e}")
+                return self._create_error_response("agent_error", "Agent feldolgozási hiba")
             
-            agent_response = await process_coordinator_message(
-                message=content,
-                user=user,
-                session_id=session_id
-            )
+            # Válasz üzenet létrehozása (JSON-serializable metadata-val)
+            safe_metadata = {}
+            if agent_response.metadata:
+                for key, value in agent_response.metadata.items():
+                    # Filter out non-serializable objects
+                    if isinstance(value, (str, int, float, bool, type(None), list, dict)):
+                        safe_metadata[key] = value
+                    else:
+                        safe_metadata[key] = str(value)  # Convert to string for serialization
             
-            # Válasz üzenet létrehozása
             response_message = ChatMessage(
                 id=str(uuid.uuid4()),
                 session_id=session_id,
                 type=MessageType.ASSISTANT,
                 content=agent_response.response_text,
                 metadata={
-                    "agent_type": agent_response.agent_type.value,
-                    "confidence": agent_response.confidence,
-                    "processing_time": agent_response.processing_time,
-                    **agent_response.metadata
+                    "agent_type": str(agent_response.agent_type.value) if agent_response.agent_type else "unknown",
+                    "confidence": float(agent_response.confidence) if agent_response.confidence else 0.0,
+                    "processing_time": float(agent_response.processing_time) if agent_response.processing_time else 0.0,
+                    **safe_metadata
                 }
             )
             
@@ -417,16 +430,16 @@ class ChatWebSocketHandler:
             session.messages.append(response_message)
             await self._update_session_cache(session)
             
-            # Válasz küldése
+            # Válasz küldése (JSON-serializable értékekkel)
             return {
                 "type": "chat_response",
                 "data": {
                     "message_id": response_message.id,
                     "content": response_message.content,
-                    "agent_type": agent_response.agent_type.value,
-                    "confidence": agent_response.confidence,
+                    "agent_type": str(agent_response.agent_type.value) if agent_response.agent_type else "unknown",
+                    "confidence": float(agent_response.confidence) if agent_response.confidence else 0.0,
                     "timestamp": response_message.timestamp.isoformat(),
-                    "metadata": response_message.metadata
+                    "metadata": safe_metadata  # Use the safe metadata
                 },
                 "session_id": session_id,
                 "timestamp": datetime.now(timezone.utc).isoformat()
@@ -508,8 +521,19 @@ class ChatWebSocketHandler:
         
         try:
             session_data = await self.redis_cache_service.session_cache.get_session(session_id)
-            if session_data:
-                # SessionData-ból ChatSession létrehozása
+            if session_data and isinstance(session_data, dict):  # Ellenőrizzük a típust
+                # Biztonságos deserializáció dict-ből
+                return ChatSession(
+                    session_id=session_data.get("session_id"),
+                    user_id=session_data.get("user_id"),
+                    started_at=session_data.get("started_at"),
+                    last_activity=session_data.get("last_activity"),
+                    context=session_data.get("context", {}),
+                    is_active=session_data.get("is_active", True),
+                    messages=[]  # TODO: Messages cache-ből betöltése
+                )
+            elif session_data and hasattr(session_data, 'session_id'):
+                # Ha SessionData objektum
                 return ChatSession(
                     session_id=session_data.session_id,
                     user_id=session_data.user_id,

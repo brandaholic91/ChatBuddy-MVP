@@ -419,8 +419,13 @@ class ThreatDetector:
         return {
             "threats": threats,
             "risk_level": risk_level,
-            "threat_count": len(threats)
+            "threat_count": len(threats),
+            "threat_level": risk_level  # Add alias for backward compatibility
         }
+    
+    async def analyze_message(self, message: str) -> Dict[str, Any]:
+        """Analyze message for threats (async wrapper for detect_threats)."""
+        return self.detect_threats(message)
     
     def should_block_request(self, input_data: str) -> bool:
         """Determine if request should be blocked."""

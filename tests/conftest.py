@@ -16,6 +16,17 @@ from typing import Dict, Any, List
 from pydantic_ai.models.test import TestModel
 
 
+@pytest.fixture(autouse=True)
+def mock_api_keys():
+    """Mock API keys for testing."""
+    with patch.dict('os.environ', {
+        'OPENAI_API_KEY': 'test_openai_key_for_testing_only',
+        'ANTHROPIC_API_KEY': 'test_anthropic_key_for_testing_only',
+        'GOOGLE_API_KEY': 'test_google_key_for_testing_only'
+    }):
+        yield
+
+
 @pytest.fixture
 def test_model():
     """Test model for agent testing."""

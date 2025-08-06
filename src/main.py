@@ -5,6 +5,7 @@ Chatbuddy MVP - Main FastAPI application.
 import os
 import json
 from datetime import datetime, timezone
+from typing import Any, Dict, List, Union
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -48,6 +49,19 @@ setup_logging()
 
 # Get logger for WebSocket endpoint
 logger = get_logger(__name__)
+
+
+def _make_json_safe(obj: Any) -> Any:
+    """Make an object JSON-serializable by filtering out non-serializable objects."""
+    if isinstance(obj, dict):
+        return {key: _make_json_safe(value) for key, value in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return [_make_json_safe(item) for item in obj]
+    elif isinstance(obj, (str, int, float, bool, type(None))):
+        return obj
+    else:
+        # Convert non-serializable objects to string
+        return str(obj)
 
 # Create rate limiter
 limiter = Limiter(key_func=get_remote_address)
@@ -540,8 +554,9 @@ async def websocket_chat_endpoint(websocket: WebSocket, session_id: str):
                 # Üzenet feldolgozása
                 response = await chat_handler.handle_message(websocket, connection_id, message_data)
                 
-                # Válasz küldése
-                await websocket.send_json(response)
+                # Válasz küldése (JSON-safe response)
+                safe_response = _make_json_safe(response)
+                await websocket.send_json(safe_response)
                 
         except WebSocketDisconnect:
             logger.info(f"WebSocket kapcsolat lezárva: {connection_id}")

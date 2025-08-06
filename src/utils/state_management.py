@@ -217,21 +217,21 @@ def get_state_summary(state: LangGraphState) -> Dict[str, Any]:
         State összefoglaló
     """
     return {
-        "total_messages": len(state["messages"]),
-        "current_agent": state["current_agent"],
-        "error_count": state["error_count"],
-        "retry_attempts": state["retry_attempts"],
-        "workflow_step": state["workflow_step"],
+        "total_messages": len(state.get("messages", [])),
+        "current_agent": state.get("current_agent") or state.get("active_agent", "unknown"),
+        "error_count": state.get("error_count", 0),
+        "retry_attempts": state.get("retry_attempts", 0),
+        "workflow_step": state.get("workflow_step", "unknown"),
         "processing_time": (
-            state["processing_end_time"] - state["processing_start_time"]
-            if state["processing_end_time"] and state["processing_start_time"]
+            state.get("processing_end_time", 0) - state.get("processing_start_time", 0)
+            if state.get("processing_end_time") and state.get("processing_start_time")
             else None
         ),
-        "tokens_used": state["tokens_used"],
-        "cost": state["cost"],
-        "agent_responses_count": len(state["agent_data"].get("agent_responses", [])),
-        "errors_count": len(state["agent_data"].get("errors", [])),
-        "conversation_history_count": len(state["conversation_history"])
+        "tokens_used": state.get("tokens_used", 0),
+        "cost": state.get("cost", 0.0),
+        "agent_responses_count": len(state.get("agent_data", {}).get("agent_responses", [])),
+        "errors_count": len(state.get("agent_data", {}).get("errors", [])),
+        "conversation_history_count": len(state.get("conversation_history", []))
     }
 
 
