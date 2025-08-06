@@ -52,6 +52,9 @@ from dotenv import load_dotenv
 # Load environment variables from .env file
 load_dotenv()
 
+# Set testing environment variable
+os.environ['TESTING'] = 'true'
+
 
 @pytest.fixture(scope="session")
 def event_loop():
@@ -81,7 +84,7 @@ async def redis_test_client():
             decode_responses=True  # Automatically decode responses to strings
         )
         await client.ping()
-    except redis.exceptions.ConnectionError as e:
+    except Exception as e:
         pytest.fail(f"Redis connection failed: {e}")
 
     yield client

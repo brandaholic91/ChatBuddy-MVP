@@ -1,0 +1,26 @@
+Kedves {{ customer_name or 'Vásárló' }}!
+
+🛒 Észrevettük, hogy a kosaradban {{ cart_items|length }} termék vár a megvásárlásra, 
+összesen {{ formatted_cart_value }} értékben.
+
+{% if cart_items %}
+📦 A kosaradban lévő termékek:
+{% for item in cart_items %}
+- {{ item.name }} ({{ item.quantity }} db) - {{ item.formatted_total_price }}
+{% endfor %}
+{% endif %}
+
+{% if discount_code %}
+🎁 Különleges kedvezmény!
+Használd a {{ discount_code }} kódot és spórolj {{ discount_percentage|format_percentage }}-ot!
+⏰ Kedvezmény érvényes: {{ valid_until|format_date('%Y.%m.%d') }}-ig
+{% endif %}
+
+🛒 Vissza a kosarhoz: {{ website_url }}/cart
+
+Ha kérdésed van, ne habozz kapcsolatba lépni velünk!
+{{ company_name }}
+{{ website_url }}
+📧 Email: {{ support_email }} | 📞 Tel: {{ support_phone }}
+
+Leiratkozás: {{ website_url }}/unsubscribe

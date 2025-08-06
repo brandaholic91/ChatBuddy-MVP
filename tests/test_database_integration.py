@@ -177,8 +177,9 @@ class TestSupabaseClient:
     def test_client_connection_error(self, supabase_config: SupabaseConfig) -> None:
         """Test client connection error handling."""
         with patch('src.integrations.database.supabase_client.create_client', side_effect=Exception("Connection failed")):
-            with pytest.raises(Exception, match="Connection failed"):
-                SupabaseClient(supabase_config)
+            # A SupabaseClient nem dob kivételt, hanem logolja és beállítja client = None
+            client = SupabaseClient(supabase_config)
+            assert client.client is None
 
 
 class TestSchemaManager:

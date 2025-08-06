@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ne felejtsd el a kosaradat!</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            line-height: 1.6; 
+            color: #333; 
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+        }
+        .container { 
+            max-width: 600px; 
+            margin: 0 auto; 
+            background-color: #ffffff;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+        }
+        .header { 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+            color: white; 
+            padding: 30px 20px; 
+            text-align: center; 
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 28px;
+            font-weight: bold;
+        }
+        .content { 
+            padding: 30px 20px; 
+            background: #ffffff; 
+        }
+        .cart-items { 
+            margin: 25px 0; 
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+        }
+        .cart-item { 
+            background: white; 
+            padding: 15px; 
+            margin: 10px 0; 
+            border-left: 4px solid #667eea; 
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .cart-item strong {
+            color: #333;
+            font-size: 16px;
+        }
+        .discount-box { 
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%); 
+            color: white; 
+            padding: 25px; 
+            margin: 25px 0; 
+            text-align: center; 
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(40, 167, 69, 0.3);
+        }
+        .discount-box h3 {
+            margin: 0 0 15px 0;
+            font-size: 24px;
+        }
+        .discount-code {
+            background: rgba(255,255,255,0.2);
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-size: 18px;
+            font-weight: bold;
+            display: inline-block;
+            margin: 10px 0;
+        }
+        .button { 
+            display: inline-block; 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+            color: white; 
+            padding: 15px 30px; 
+            text-decoration: none; 
+            border-radius: 25px; 
+            font-weight: bold;
+            font-size: 16px;
+            box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
+            transition: all 0.3s ease;
+        }
+        .button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(102, 126, 234, 0.4);
+        }
+        .footer { 
+            text-align: center; 
+            padding: 25px 20px; 
+            color: #666; 
+            font-size: 12px; 
+            background: #f8f9fa;
+            border-top: 1px solid #e9ecef;
+        }
+        .footer a {
+            color: #667eea;
+            text-decoration: none;
+        }
+        .footer a:hover {
+            text-decoration: underline;
+        }
+        .stats {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            text-align: center;
+        }
+        .stats strong {
+            color: #1976d2;
+            font-size: 18px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🛒 Ne felejtsd el a kosaradat!</h1>
+        </div>
+        
+        <div class="content">
+            <p>Kedves {{ customer_name or 'Vásárló' }}!</p>
+            
+            <div class="stats">
+                <p>Észrevettük, hogy a kosaradban <strong>{{ cart_items|length }} termék</strong> vár a megvásárlásra, 
+                összesen <strong>{{ formatted_cart_value }}</strong> értékben.</p>
+            </div>
+            
+            {% if cart_items %}
+            <div class="cart-items">
+                <h3>📦 A kosaradban lévő termékek:</h3>
+                {% for item in cart_items %}
+                <div class="cart-item">
+                    <strong>{{ item.name }}</strong><br>
+                    📊 Mennyiség: {{ item.quantity }} db<br>
+                    💰 Ár: {{ item.formatted_price }} / db<br>
+                    💵 Összesen: {{ item.formatted_total_price }}
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+            
+            {% if discount_code %}
+            <div class="discount-box">
+                <h3>🎁 Különleges kedvezmény!</h3>
+                <p>Használd a következő kódot és spórolj <strong>{{ discount_percentage|format_percentage }}</strong>-ot!</p>
+                <div class="discount-code">{{ discount_code }}</div>
+                <p><small>⏰ Kedvezmény érvényes: {{ valid_until|format_date('%Y.%m.%d') }}-ig</small></p>
+            </div>
+            {% endif %}
+            
+            <p style="text-align: center; margin: 40px 0;">
+                <a href="{{ website_url }}/cart" class="button">🛒 Vissza a kosarhoz</a>
+            </p>
+            
+            <p>Ha kérdésed van, ne habozz kapcsolatba lépni velünk! Csapatunk mindig rendelkezésre áll, hogy segítsen a vásárlásban.</p>
+        </div>
+        
+        <div class="footer">
+            <p><strong>{{ company_name }}</strong> | {{ website_url }}</p>
+            <p>📧 Email: {{ support_email }} | 📞 Tel: {{ support_phone }}</p>
+            <p><a href="{{ website_url }}/unsubscribe">Leiratkozás</a></p>
+        </div>
+    </div>
+</body>
+</html>
