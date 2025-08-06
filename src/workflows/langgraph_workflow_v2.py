@@ -20,6 +20,10 @@ from ..agents.recommendations.agent import create_recommendation_agent, Recommen
 from ..agents.marketing.agent import create_marketing_agent, MarketingDependencies
 from ..agents.general.agent import create_general_agent, GeneralDependencies
 
+# Import the new agent cache manager
+from .agent_cache_manager import get_cached_agent
+from ..models.agent import AgentType
+
 # Security and utilities imports
 from ..config.security import get_threat_detector, InputValidator
 from ..config.gdpr_compliance import get_gdpr_compliance, ConsentType, DataCategory
@@ -171,17 +175,17 @@ async def pydantic_ai_tool_node(state: AgentState) -> AgentState:
         
         try:
             if active_agent == "product":
-                agent = create_product_info_agent()
+                agent = get_cached_agent(AgentType.PRODUCT_INFO)
                 result = await agent.run(current_question, deps=dependencies)
                 agent_response = result.data if hasattr(result, 'data') else result
                 
             elif active_agent == "order":
-                agent = create_order_status_agent()
+                agent = get_cached_agent(AgentType.ORDER_STATUS)
                 result = await agent.run(current_question, deps=dependencies)
                 agent_response = result.data if hasattr(result, 'data') else result
                 
             elif active_agent == "recommendation":
-                agent = create_recommendation_agent()
+                agent = get_cached_agent(AgentType.RECOMMENDATION)
                 result = await agent.run(current_question, deps=dependencies)
                 agent_response = result.data if hasattr(result, 'data') else result
                 
@@ -204,17 +208,17 @@ async def pydantic_ai_tool_node(state: AgentState) -> AgentState:
                             "metadata": {"consent_required": True}
                         }
                     else:
-                        agent = create_marketing_agent()
+                        agent = get_cached_agent(AgentType.MARKETING)
                         result = await agent.run(current_question, deps=dependencies)
                         agent_response = result.data if hasattr(result, 'data') else result
                 except Exception:
                     # Fallback for GDPR issues
-                    agent = create_marketing_agent()
+                    agent = get_cached_agent(AgentType.MARKETING)
                     result = await agent.run(current_question, deps=dependencies)
                     agent_response = result.data if hasattr(result, 'data') else result
                     
             else:  # general agent
-                agent = create_general_agent()
+                agent = get_cached_agent(AgentType.GENERAL)
                 result = await agent.run(current_question, deps=dependencies)
                 agent_response = result.data if hasattr(result, 'data') else result
                 
