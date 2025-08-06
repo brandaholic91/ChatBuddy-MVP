@@ -22,6 +22,7 @@ from pydantic import BaseModel, field_validator
 import bleach
 import jwt
 from passlib.context import CryptContext
+from fastapi_csrf_protect import CsrfProtect
 
 # Security context
 security = HTTPBearer()
@@ -43,6 +44,7 @@ class SecurityConfig(BaseModel):
     rate_limit_default: str = "100/minute"
     rate_limit_auth: str = "5/minute"
     rate_limit_chat: str = "50/minute"
+    csrf_secret_key: str = ""
     
     @field_validator('secret_key')
     @classmethod
@@ -640,4 +642,57 @@ def validate_user_input(func):
     def wrapper(*args, **kwargs):
         # Input validation logic
         return func(*args, **kwargs)
-    return wrapper 
+    return wrapper
+
+
+# CSRF Protection
+class CSRFProtectionManager:
+    """CSRF protection manager."""
+    
+    def __init__(self, secret_key: str):
+        self.secret_key = secret_key
+        self.csrf_protect = CsrfProtect()
+    
+    def setup_csrf_protection(self, app: FastAPI) -> None:
+        """Setup CSRF protection for FastAPI application."""
+        # Configure CSRF settings
+        @CsrfProtect.load_config
+        def get_csrf_config():
+            return {
+                'secret_key': self.secret_key,
+                'cookie_name': 'fastapi-csrf-token',
+                'header_name': 'X-CSRF-Token',
+                'cookie_path': '/',
+                'cookie_domain': None,
+                'cookie_secure': True,  # HTTPS only
+                'cookie_samesite': 'strict',
+                'httponly_cookie': True
+            }
+    
+    def get_csrf_token_dependency(self):
+        """Get CSRF token dependency for endpoints."""
+        return Depends(self.csrf_protect.validate_csrf)
+    
+    async def generate_csrf_token(self, request: Request) -> str:
+        """Generate CSRF token for client."""
+        return await self.csrf_protect.generate_csrf()
+
+
+# Global CSRF protection instance
+_csrf_protection_manager: Optional[CSRFProtectionManager] = None
+
+
+def get_csrf_protection_manager() -> CSRFProtectionManager:
+    """Get CSRF protection manager instance."""
+    global _csrf_protection_manager
+    if _csrf_protection_manager is None:
+        config = get_security_config()
+        csrf_key = config.csrf_secret_key or config.secret_key
+        _csrf_protection_manager = CSRFProtectionManager(csrf_key)
+    return _csrf_protection_manager
+
+
+def setup_csrf_protection(app: FastAPI) -> None:
+    """Setup CSRF protection for the application."""
+    csrf_manager = get_csrf_protection_manager()
+    csrf_manager.setup_csrf_protection(app) 

@@ -6,12 +6,15 @@ import os
 import json
 from datetime import datetime, timezone
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
 
 from src.config.logging import setup_logging
-from src.config.security import setup_security_middleware, get_security_headers
+from src.config.security import setup_security_middleware, get_security_headers, setup_csrf_protection
 from src.config.langgraph_auth import initialize_langgraph_auth, shutdown_langgraph_auth
 from src.workflows.coordinator import process_coordinator_message
 from src.models.chat import ChatRequest, ChatResponse
@@ -46,6 +49,9 @@ setup_logging()
 # Get logger for WebSocket endpoint
 logger = get_logger(__name__)
 
+# Create rate limiter
+limiter = Limiter(key_func=get_remote_address)
+
 # Create FastAPI app
 app = FastAPI(
     title="Chatbuddy MVP",
@@ -55,6 +61,10 @@ app = FastAPI(
     redoc_url="/redoc",
     lifespan=lambda app: lifespan_context(app)
 )
+
+# Add rate limiter to app state
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 from contextlib import asynccontextmanager
 
@@ -71,6 +81,8 @@ async def lifespan_context(app):
         print("✅ GDPR compliance layer initialized")
         await setup_rate_limiting()
         print("✅ Rate limiting initialized")
+        setup_csrf_protection(app)
+        print("✅ CSRF protection initialized")
         
         # Redis cache inicializálása
         try:
@@ -345,8 +357,36 @@ async def internal_error_handler(request, exc):
 #         print(f"❌ Error shutting down security systems: {e}")
 
 
+# CSRF token endpoint
+@app.get("/api/v1/csrf-token")
+async def get_csrf_token(request: Request):
+    """
+    Get CSRF token for secure form submissions.
+    
+    Args:
+        request: FastAPI request object
+        
+    Returns:
+        CSRF token
+    """
+    try:
+        from src.config.security import get_csrf_protection_manager
+        
+        csrf_manager = get_csrf_protection_manager()
+        csrf_token = await csrf_manager.generate_csrf_token(request)
+        
+        return {
+            "csrf_token": csrf_token,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+    except Exception as e:
+        logger.error(f"CSRF token generation error: {e}")
+        raise HTTPException(status_code=500, detail="CSRF token generation failed")
+
+
 # Chat endpoints
 @app.post("/api/v1/chat", response_model=ChatResponse)
+@limiter.limit("50/minute")
 async def chat_endpoint(request: ChatRequest, request_obj: Request):
     """
     Chat endpoint - Koordinátor Agent használatával biztonsági fókusszal.
@@ -363,21 +403,53 @@ async def chat_endpoint(request: ChatRequest, request_obj: Request):
         source_ip = request_obj.client.host if request_obj.client else None
         user_agent = request_obj.headers.get("user-agent")
         
-        # Input validation
+        # Enhanced Input validation and sanitization
         if not request.message or len(request.message.strip()) == 0:
             raise HTTPException(
                 status_code=400,
                 detail="Üres üzenet"
             )
         
-        if len(request.message) > 1000:
+        if len(request.message) > 4000:  # Increased limit
             raise HTTPException(
                 status_code=400,
-                detail="Túl hosszú üzenet (max 1000 karakter)"
+                detail="Túl hosszú üzenet (max 4000 karakter)"
+            )
+        
+        # Import security utilities
+        from src.config.security import sanitize_string, get_threat_detector
+        
+        # Sanitize input message
+        sanitized_message = sanitize_string(request.message, max_length=4000)
+        if not sanitized_message:
+            raise HTTPException(
+                status_code=400,
+                detail="Érvénytelen üzenet tartalom"
             )
         
         # Security audit logging
         audit_logger = get_audit_logger()
+        
+        # Threat detection
+        threat_detector = get_threat_detector()
+        if threat_detector.should_block_request(request.message):
+            await audit_logger.log_security_event(
+                event_type="threat_detected",
+                user_id=request.user_id or "anonymous", 
+                details={
+                    "message": request.message[:100],  # Only first 100 chars
+                    "source_ip": source_ip,
+                    "user_agent": user_agent
+                },
+                severity=AuditSeverity.HIGH
+            )
+            raise HTTPException(
+                status_code=400,
+                detail="Kérés blokkolva biztonsági okokból"
+            )
+        
+        # Replace original message with sanitized version
+        request.message = sanitized_message
         await audit_logger.log_security_event(
             event_type="chat_request",
             user_id=request.user_id or "anonymous",
