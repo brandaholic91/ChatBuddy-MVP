@@ -1,5 +1,5 @@
 """
-Chatbuddy MVP - Main FastAPI application.
+Chatbuddy MVP - Main FastAPI application.magy
 """
 
 import os
@@ -100,28 +100,28 @@ async def lifespan_context(app):
         print("✅ Rate limiting initialized")
         setup_csrf_protection(app)
         print("✅ CSRF protection initialized")
-        
+
         # Redis cache inicializálása
         try:
             redis_cache_service = await get_redis_cache_service()
             print("✅ Redis cache service initialized")
         except Exception as e:
             print(f"⚠️ Redis cache service initialization failed: {e}")
-        
+
         # WebSocket handler inicializálása
         try:
             await chat_handler.initialize()
             print("✅ WebSocket chat handler initialized")
         except Exception as e:
             print(f"⚠️ WebSocket chat handler initialization failed: {e}")
-        
+
         # LangGraph SDK authentikáció inicializálása
         try:
             await initialize_langgraph_auth()
             print("✅ LangGraph SDK authentication initialized")
         except Exception as e:
             print(f"⚠️ LangGraph SDK authentication initialization failed: {e}")
-        
+
         print("🔒 Security systems initialized successfully")
     except Exception as e:
         print(f"❌ Error initializing security systems: {e}")
@@ -132,21 +132,21 @@ async def lifespan_context(app):
         audit_logger = get_audit_logger()
         await audit_logger.stop_processing()
         print("✅ Security audit logger stopped")
-        
+
         # LangGraph SDK authentikáció leállítása
         try:
             await shutdown_langgraph_auth()
             print("✅ LangGraph SDK authentication stopped")
         except Exception as e:
             print(f"⚠️ LangGraph SDK authentication shutdown failed: {e}")
-        
+
         # Redis cache leállítása
         try:
             await shutdown_redis_cache_service()
             print("✅ Redis cache service stopped")
         except Exception as e:
             print(f"⚠️ Redis cache service shutdown failed: {e}")
-            
+
     except Exception as e:
         print(f"❌ Error shutting down security systems: {e}")
 
@@ -187,7 +187,7 @@ async def root():
 async def health_check():
     """
     Health check endpoint for monitoring.
-    
+
     Returns:
         Health status of all services
     """
@@ -195,22 +195,22 @@ async def health_check():
         # Check environment variables
         required_env_vars = [
             "OPENAI_API_KEY",
-            "SUPABASE_URL", 
+            "SUPABASE_URL",
             "SUPABASE_ANON_KEY",
             "SECRET_KEY"
         ]
-        
+
         missing_vars = []
         for var in required_env_vars:
             if not os.getenv(var):
                 missing_vars.append(var)
-        
+
         # Check services
         services_status = {
             "database": "connected",  # Will be implemented
             "ai_models": "available"   # Will be implemented
         }
-        
+
         # Redis cache health check
         try:
             redis_cache_service = await get_redis_cache_service()
@@ -219,13 +219,13 @@ async def health_check():
         except Exception as e:
             services_status["redis"] = "error"
             print(f"Redis health check error: {e}")
-        
+
         # Overall status
         if missing_vars:
             status = "degraded"
         else:
             status = "healthy"
-        
+
         return {
             "status": status,
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -233,7 +233,7 @@ async def health_check():
             "services": services_status,
             "missing_env_vars": missing_vars if missing_vars else None
         }
-        
+
     except Exception as e:
         error_info = get_error_message("GENERIC_ERROR", error_code="E001")
         return JSONResponse(
@@ -251,7 +251,7 @@ async def health_check():
 async def api_status():
     """
     API status endpoint.
-    
+
     Returns:
         API status information
     """
@@ -260,7 +260,7 @@ async def api_status():
         "status": "operational",
         "features": {
             "chat": "available",
-            "products": "available", 
+            "products": "available",
             "orders": "available",
             "agents": "available"
         },
@@ -272,7 +272,7 @@ async def api_status():
 async def api_info():
     """
     API information endpoint.
-    
+
     Returns:
         Detailed API information
     """
@@ -283,7 +283,7 @@ async def api_info():
         "author": "Chatbuddy Team",
         "technologies": [
             "FastAPI",
-            "LangGraph", 
+            "LangGraph",
             "Pydantic AI",
             "Supabase",
             "Redis",
@@ -332,24 +332,24 @@ async def internal_error_handler(request, exc):
 #     print("🚀 Chatbuddy MVP starting up...")
 #     print(f"📅 Started at: {datetime.utcnow().isoformat()}")
 #     print(f"🔧 Environment: {os.getenv('ENVIRONMENT', 'development')}")
-    
+
 #     # Initialize security systems
 #     try:
 #         # Start audit logger
 #         audit_logger = get_security_audit_logger()
 #         await audit_logger.start()
 #         print("✅ Security audit logger started")
-        
+
 #         # Initialize GDPR compliance
 #         gdpr_compliance = get_gdpr_compliance()
 #         print("✅ GDPR compliance layer initialized")
-        
+
 #         # Setup rate limiting
 #         await setup_rate_limiting()
 #         print("✅ Rate limiting initialized")
-        
+
 #         print("🔒 Security systems initialized successfully")
-        
+
 #     except Exception as e:
 #         print(f"❌ Error initializing security systems: {e}")
 
@@ -359,13 +359,13 @@ async def internal_error_handler(request, exc):
 #     """Application shutdown event."""
 #     print("🛑 Chatbuddy MVP shutting down...")
 #     print(f"📅 Stopped at: {datetime.utcnow().isoformat()}")
-    
+
 #     # Shutdown security systems
 #     try:
 #         audit_logger = get_security_audit_logger()
 #         await audit_logger.stop()
 #         print("✅ Security audit logger stopped")
-        
+
 #     except Exception as e:
 #         print(f"❌ Error shutting down security systems: {e}")
 
@@ -375,19 +375,19 @@ async def internal_error_handler(request, exc):
 async def get_csrf_token(request: Request):
     """
     Get CSRF token for secure form submissions.
-    
+
     Args:
         request: FastAPI request object
-        
+
     Returns:
         CSRF token
     """
     try:
         from src.config.security import get_csrf_protection_manager
-        
+
         csrf_manager = get_csrf_protection_manager()
         csrf_token = await csrf_manager.generate_csrf_token(request)
-        
+
         return {
             "csrf_token": csrf_token,
             "timestamp": datetime.now(timezone.utc).isoformat()
@@ -403,11 +403,11 @@ async def get_csrf_token(request: Request):
 async def chat_endpoint(request: ChatRequest, request_obj: Request):
     """
     Chat endpoint - Koordinátor Agent használatával biztonsági fókusszal.
-    
+
     Args:
         request: Chat kérés
         request_obj: FastAPI request objektum
-        
+
     Returns:
         Chat válasz
     """
@@ -417,31 +417,31 @@ async def chat_endpoint(request: ChatRequest, request_obj: Request):
         # Extract security information
         source_ip = request_obj.client.host if request_obj.client else None
         user_agent = request_obj.headers.get("user-agent")
-        
+
         # Enhanced Input validation and sanitization
         if not request.message or len(request.message.strip()) == 0:
             raise ChatBuddyError(error_key="INVALID_INPUT", message="Üres üzenet.")
-        
+
         if len(request.message) > 4000:  # Increased limit
             raise ChatBuddyError(error_key="INVALID_INPUT", message="Túl hosszú üzenet (max 4000 karakter).")
-        
+
         # Import security utilities
         from src.config.security import sanitize_string, get_threat_detector
-        
+
         # Sanitize input message
         sanitized_message = sanitize_string(request.message, max_length=4000)
         if not sanitized_message:
             raise ChatBuddyError(error_key="INVALID_INPUT", message="Érvénytelen üzenet tartalom.")
-        
+
         # Security audit logging
         audit_logger = get_audit_logger()
-        
+
         # Threat detection
         threat_detector = get_threat_detector()
         if threat_detector.should_block_request(request.message):
             await audit_logger.log_security_event(
                 event_type="threat_detected",
-                user_id=request.user_id or "anonymous", 
+                user_id=request.user_id or "anonymous",
                 details={
                     "message": request.message[:100],  # Only first 100 chars
                     "source_ip": source_ip,
@@ -450,7 +450,7 @@ async def chat_endpoint(request: ChatRequest, request_obj: Request):
                 severity=AuditSeverity.HIGH
             )
             raise ChatBuddyError(error_key="UNAUTHORIZED_ACCESS", message="Kérés blokkolva biztonsági okokból.")
-        
+
         # Replace original message with sanitized version
         request.message = sanitized_message
         await audit_logger.log_security_event(
@@ -459,13 +459,13 @@ async def chat_endpoint(request: ChatRequest, request_obj: Request):
             details={"message_length": len(request.message)},
             ip_address=source_ip
         )
-        
+
         # Felhasználó objektum létrehozása (placeholder)
         user = None
         if request.user_id:
             # Note: ChatRequest nem tartalmaz user_email mezőt
             user = User(id=request.user_id, email="user@example.com")  # Placeholder email
-        
+
         # Koordinátor agent hívása biztonsági paraméterekkel
         agent_response = await PerformanceTracker("process_coordinator_message").measure_async(
             process_coordinator_message,
@@ -473,7 +473,7 @@ async def chat_endpoint(request: ChatRequest, request_obj: Request):
             user=user,
             session_id=request.session_id
         )
-        
+
         # ChatResponse létrehozása
         response = ChatResponse(
             message=agent_response.response_text,
@@ -482,9 +482,9 @@ async def chat_endpoint(request: ChatRequest, request_obj: Request):
             agent_used=agent_response.agent_type.value,
             metadata=agent_response.metadata
         )
-        
+
         return response
-        
+
     except ChatBuddyError as e:
         # Custom ChatBuddyError already contains detailed info
         audit_logger = get_audit_logger()
@@ -506,9 +506,9 @@ async def chat_endpoint(request: ChatRequest, request_obj: Request):
         audit_logger = get_audit_logger()
         error_key = "GENERIC_ERROR"
         chat_buddy_error = ChatBuddyError(error_key=error_key, original_error=str(e))
-        
+
         log_severity = AuditSeverity.CRITICAL if os.getenv("ENVIRONMENT") == "production" else AuditSeverity.ERROR
-        
+
         await audit_logger.log_security_event(
             event_type=f"chat_error_{error_key}",
             user_id=request.user_id or "anonymous",
@@ -523,9 +523,9 @@ async def chat_endpoint(request: ChatRequest, request_obj: Request):
             ip_address=source_ip if 'source_ip' in locals() else None,
             severity=log_severity
         )
-        
+
         logger.error(f"Error processing chat: {e}", exc_info=True)
-        
+
         raise HTTPException(
             status_code=500,
             detail=chat_buddy_error.to_dict()
@@ -539,7 +539,7 @@ async def chat_endpoint(request: ChatRequest, request_obj: Request):
 async def websocket_chat_endpoint(websocket: WebSocket, session_id: str):
     """
     WebSocket endpoint a real-time chat kommunikációhoz.
-    
+
     Args:
         websocket: WebSocket objektum
         session_id: Session azonosító
@@ -547,13 +547,13 @@ async def websocket_chat_endpoint(websocket: WebSocket, session_id: str):
     try:
         # WebSocket kapcsolat elfogadása
         await websocket.accept()
-        
+
         # Query paraméterek kinyerése
         user_id = websocket.query_params.get("user_id")
-        
+
         # Kapcsolat hozzáadása a manager-hez
         connection_id = await websocket_manager.connect(websocket, session_id, user_id)
-        
+
         # Kapcsolat visszajelzés küldése
         await websocket.send_json({
             "type": "connection_established",
@@ -564,20 +564,20 @@ async def websocket_chat_endpoint(websocket: WebSocket, session_id: str):
                 "timestamp": datetime.now(timezone.utc).isoformat()
             }
         })
-        
+
         # Üzenetek feldolgozása
         try:
             while True:
                 # Üzenet fogadása
                 message_data = await websocket.receive_json()
-                
+
                 # Üzenet feldolgozása
                 response = await chat_handler.handle_message(websocket, connection_id, message_data)
-                
+
                 # Válasz küldése (JSON-safe response)
                 safe_response = _make_json_safe(response)
                 await websocket.send_json(safe_response)
-                
+
         except WebSocketDisconnect:
             logger.info(f"WebSocket kapcsolat lezárva: {connection_id}")
         except Exception as e:
@@ -598,7 +598,7 @@ async def websocket_chat_endpoint(websocket: WebSocket, session_id: str):
         finally:
             # Kapcsolat eltávolítása
             await websocket_manager.disconnect(connection_id)
-            
+
     except Exception as e:
         logger.error(f"Hiba a WebSocket endpoint-ban: {e}", exc_info=True)
         error_info = get_error_message("GENERIC_ERROR")
@@ -612,7 +612,7 @@ async def websocket_chat_endpoint(websocket: WebSocket, session_id: str):
 async def websocket_stats():
     """
     WebSocket statisztikák lekérése.
-    
+
     Returns:
         WebSocket manager statisztikák
     """
@@ -635,16 +635,16 @@ async def websocket_stats():
 async def workflow_performance():
     """
     Workflow teljesítmény metrikák lekérése.
-    
+
     Returns:
         Workflow performance metrikák
     """
     try:
         from src.workflows.langgraph_workflow import get_workflow_manager
-        
+
         workflow_manager = get_workflow_manager()
         metrics = workflow_manager.get_performance_metrics()
-        
+
         return {
             "workflow_performance": {
                 "metrics": metrics,
@@ -652,7 +652,7 @@ async def workflow_performance():
                 "framework": "LangGraph + Pydantic AI",
                 "features": [
                     "Agent Caching",
-                    "Enhanced Routing", 
+                    "Enhanced Routing",
                     "Performance Monitoring",
                     "Error Recovery"
                 ]
@@ -672,17 +672,17 @@ async def workflow_performance():
 async def cache_stats():
     """
     Cache statisztikák és állapot lekérése.
-    
+
     Returns:
         Cache performance és állapot információk
     """
     try:
         from src.integrations.cache import get_redis_cache_service
-        
+
         redis_cache_service = await get_redis_cache_service()
         stats = await redis_cache_service.get_stats()
         health = await redis_cache_service.health_check()
-        
+
         return {
             "cache_performance": {
                 "stats": stats,
@@ -690,7 +690,7 @@ async def cache_stats():
                 "cache_type": "Redis",
                 "features": [
                     "Session Caching",
-                    "Performance Caching", 
+                    "Performance Caching",
                     "Rate Limiting",
                     "Distributed Caching"
                 ]
@@ -710,19 +710,19 @@ async def cache_stats():
 async def invalidate_cache(pattern: str = None):
     """
     Cache érvénytelenítése.
-    
+
     Args:
         pattern: Opcionális pattern a szelektív érvénytelenítéshez
-        
+
     Returns:
         Érvénytelenítés eredménye
     """
     try:
         from src.workflows.langgraph_workflow import get_enhanced_workflow_manager
-        
+
         workflow_manager = get_enhanced_workflow_manager()
         await workflow_manager.invalidate_cache(pattern)
-        
+
         return {
             "cache_invalidation": {
                 "status": "success",
@@ -766,18 +766,18 @@ async def verify_messenger_webhook(
 ):
     """
     Facebook Messenger webhook verification.
-    
+
     Args:
         hub_mode: Hub mode
         hub_verify_token: Verify token
         hub_challenge: Challenge string
-        
+
     Returns:
         Challenge response
     """
     try:
         from src.integrations.social_media import create_messenger_client
-        
+
         messenger_client = create_messenger_client()
         if not messenger_client:
             # Test environment - return challenge directly
@@ -785,9 +785,9 @@ async def verify_messenger_webhook(
                 return int(hub_challenge)
             else:
                 raise ChatBuddyError(error_key="GENERIC_ERROR", message="Messenger kliens nem elérhető.")
-        
+
         challenge = await messenger_client.verify_webhook(hub_mode, hub_verify_token, hub_challenge)
-        
+
         # Audit logging
         audit_logger = get_audit_logger()
         await audit_logger.log_event(
@@ -796,7 +796,7 @@ async def verify_messenger_webhook(
             f"Facebook Messenger webhook verified: {hub_mode}",
             {"hub_mode": hub_mode, "challenge": challenge}
         )
-        
+
         return challenge
     except Exception as e:
         logger.error(f"Hiba a Messenger webhook ellenőrzésekor: {e}", exc_info=True)
@@ -807,21 +807,21 @@ async def verify_messenger_webhook(
 async def handle_messenger_webhook(request: Request):
     """
     Facebook Messenger webhook handler.
-    
+
     Args:
         request: FastAPI request object
-        
+
     Returns:
         Webhook processing result
     """
     try:
         from src.integrations.social_media import create_messenger_client
         from src.agents.social_media import create_social_media_agent, SocialMediaDependencies
-        
+
         # Get request body and signature
         body = await request.body()
         signature = request.headers.get("X-Hub-Signature-256")
-        
+
         # Verify signature
         messenger_client = create_messenger_client()
         if not messenger_client:
@@ -833,10 +833,10 @@ async def handle_messenger_webhook(request: Request):
         else:
             if not messenger_client.verify_signature(signature, body):
                 raise ChatBuddyError(error_key="UNAUTHORIZED_ACCESS", message="Érvénytelen aláírás.")
-        
+
         # Parse webhook data
         webhook_data = json.loads(body)
-        
+
         # Create social media agent dependencies
         dependencies = SocialMediaDependencies(
             user_context={},
@@ -847,14 +847,14 @@ async def handle_messenger_webhook(request: Request):
             security_context=None,
             audit_logger=get_audit_logger()
         )
-        
+
         # Process webhook with social media agent
         social_media_agent = create_social_media_agent()
         result = await social_media_agent.run(
             f"Handle messenger webhook: {json.dumps(webhook_data)}",
             deps=dependencies
         )
-        
+
         # Audit logging
         audit_logger = get_audit_logger()
         await audit_logger.log_event(
@@ -863,7 +863,7 @@ async def handle_messenger_webhook(request: Request):
             "Facebook Messenger webhook processed successfully",
             {"webhook_data": webhook_data, "result": result.response_text}
         )
-        
+
         return {"status": "ok", "result": result.response_text}
     except Exception as e:
         logger.error(f"Hiba a Messenger webhook feldolgozásakor: {e}", exc_info=True)
@@ -878,29 +878,29 @@ async def verify_whatsapp_webhook(
 ):
     """
     WhatsApp Business webhook verification.
-    
+
     Args:
         hub_mode: Hub mode
         hub_verify_token: Verify token
         hub_challenge: Challenge string
-        
+
     Returns:
         Challenge response
     """
     try:
         from src.integrations.social_media import create_whatsapp_client
-        
+
         whatsapp_client = create_whatsapp_client()
-        
+
         if not whatsapp_client:
             # Test environment - return challenge directly
             if hub_mode == "subscribe" and hub_verify_token == "test_token":
                 return int(hub_challenge)
             else:
                 raise ChatBuddyError(error_key="GENERIC_ERROR", message="WhatsApp kliens nem elérhető.")
-        
+
         challenge = await whatsapp_client.verify_webhook(hub_mode, hub_verify_token, hub_challenge)
-        
+
         # Audit logging
         audit_logger = get_audit_logger()
         await audit_logger.log_event(
@@ -909,7 +909,7 @@ async def verify_whatsapp_webhook(
             f"WhatsApp Business webhook verified: {hub_mode}",
             {"hub_mode": hub_mode, "challenge": challenge}
         )
-        
+
         return challenge
     except Exception as e:
         logger.error(f"Hiba a WhatsApp webhook ellenőrzésekor: {e}", exc_info=True)
@@ -920,27 +920,27 @@ async def verify_whatsapp_webhook(
 async def handle_whatsapp_webhook(request: Request):
     """
     WhatsApp Business webhook handler.
-    
+
     Args:
         request: FastAPI request object
-        
+
     Returns:
         Webhook processing result
     """
     try:
         from src.integrations.social_media import create_whatsapp_client
         from src.agents.social_media import create_social_media_agent, SocialMediaDependencies
-        
+
         # Get request body
         webhook_data = await request.json()
-        
+
         # Create WhatsApp client
         whatsapp_client = create_whatsapp_client()
         if not whatsapp_client:
             # Test environment - create mock client
             logger.warning("WhatsApp client not available, using test mode")
             whatsapp_client = None
-        
+
         # Create social media agent dependencies
         dependencies = SocialMediaDependencies(
             user_context={},
@@ -951,14 +951,14 @@ async def handle_whatsapp_webhook(request: Request):
             security_context=None,
             audit_logger=get_audit_logger()
         )
-        
+
         # Process webhook with social media agent
         social_media_agent = create_social_media_agent()
         result = await social_media_agent.run(
             f"Handle whatsapp webhook: {json.dumps(webhook_data)}",
             deps=dependencies
         )
-        
+
         # Audit logging
         audit_logger = get_audit_logger()
         await audit_logger.log_event(
@@ -967,7 +967,7 @@ async def handle_whatsapp_webhook(request: Request):
             "WhatsApp Business webhook processed successfully",
             {"webhook_data": webhook_data, "result": result.response_text}
         )
-        
+
         return {"status": "ok", "result": result.response_text}
     except Exception as e:
         logger.error(f"Hiba a WhatsApp webhook feldolgozásakor: {e}", exc_info=True)
@@ -978,16 +978,16 @@ async def handle_whatsapp_webhook(request: Request):
 async def social_media_status():
     """
     Social media integrációk állapotának lekérése.
-    
+
     Returns:
         Social media services állapota
     """
     try:
         from src.integrations.social_media import create_messenger_client, create_whatsapp_client
-        
+
         messenger_client = create_messenger_client()
         whatsapp_client = create_whatsapp_client()
-        
+
         status = {
             "facebook_messenger": {
                 "available": messenger_client is not None,
@@ -1007,8 +1007,8 @@ async def social_media_status():
             ],
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
-        
+
         return status
     except Exception as e:
         logger.error(f"Hiba a social media állapot lekérésekor: {e}", exc_info=True)
-        raise ChatBuddyError(error_key="GENERIC_ERROR", message="Hiba a social media állapot lekérésekor.") 
+        raise ChatBuddyError(error_key="GENERIC_ERROR", message="Hiba a social media állapot lekérésekor.")

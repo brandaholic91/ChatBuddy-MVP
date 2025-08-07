@@ -1,10 +1,11 @@
 # src/utils/error_handler.py
 
+from typing import Dict, Any
 from src.config.messages import ERROR_MESSAGES
 
 class ChatBuddyError(Exception):
     """Custom exception for ChatBuddy application errors."""
-    def __init__(self, error_key: str, lang: str = "HU", **kwargs):
+    def __init__(self, error_key: str, lang: str = "HU", **kwargs: Any) -> None:
         self.error_key = error_key
         self.lang = lang
         self.details = ERROR_MESSAGES.get(lang, {}).get(error_key, {})
@@ -14,7 +15,7 @@ class ChatBuddyError(Exception):
         self.category = self.details.get("category", "General")
         super().__init__(f"[{self.code}] {self.message}")
 
-    def to_dict(self):
+    def to_dict(self) -> Dict[str, Any]:
         return {
             "code": self.code,
             "message": self.message,
@@ -24,7 +25,7 @@ class ChatBuddyError(Exception):
             "lang": self.lang
         }
 
-def get_error_message(error_key: str, lang: str = "HU", **kwargs) -> dict:
+def get_error_message(error_key: str, lang: str = "HU", **kwargs: Any) -> Dict[str, Any]:
     """Retrieves a formatted error message based on error_key and language."""
     error_info = ERROR_MESSAGES.get(lang, {}).get(error_key, {})
     return {
