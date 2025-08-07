@@ -388,62 +388,79 @@ class ChatWebSocketHandler:
             # Session cache frissítése
             await self._update_session_cache(session)
             
-            # Koordinátor agent hívása
+            # Koordinátor agent hívása (streaming)
             try:
                 user = None
                 if user_id:
                     user = User(id=user_id, email="user@example.com")  # Placeholder
                 
-                agent_response = await process_coordinator_message(
+                full_response_content = ""
+                async for agent_response_chunk in process_coordinator_message(
                     message=content,
                     user=user,
                     session_id=session_id
+                ):
+                    # Válasz üzenet létrehozása (JSON-serializable metadata-val)
+                    safe_metadata = {}
+                    if agent_response_chunk.metadata:
+                        for key, value in agent_response_chunk.metadata.items():
+                            # Filter out non-serializable objects
+                            if isinstance(value, (str, int, float, bool, type(None), list, dict)):
+                                safe_metadata[key] = value
+                            else:
+                                safe_metadata[key] = str(value)  # Convert to string for serialization
+                    
+                    # Send each chunk as a streaming response
+                    await websocket.send_json({
+                        "type": "chat_response_chunk",
+                        "data": {
+                            "content_chunk": agent_response_chunk.response_text,
+                            "agent_type": str(agent_response_chunk.agent_type.value) if agent_response_chunk.agent_type else "unknown",
+                            "confidence": float(agent_response_chunk.confidence) if agent_response_chunk.confidence else 0.0,
+                            "metadata": safe_metadata
+                        },
+                        "session_id": session_id,
+                        "timestamp": datetime.now(timezone.utc).isoformat()
+                    })
+                    full_response_content += agent_response_chunk.response_text
+
+                # After streaming, save the full response to session
+                response_message = ChatMessage(
+                    id=str(uuid.uuid4()),
+                    session_id=session_id,
+                    type=MessageType.ASSISTANT,
+                    content=full_response_content,
+                    metadata={
+                        "agent_type": str(agent_response_chunk.agent_type.value) if agent_response_chunk.agent_type else "unknown",
+                        "confidence": float(agent_response_chunk.confidence) if agent_response_chunk.confidence else 0.0,
+                        "processing_time": float(agent_response_chunk.processing_time) if agent_response_chunk.processing_time else 0.0,
+                        **safe_metadata
+                    }
                 )
+                session.messages.append(response_message)
+                await self._update_session_cache(session)
+
+                # Send a final backward-compatible message for tests and legacy clients
+                final_response = {
+                    "type": "chat_response",
+                    "data": {
+                        "content": full_response_content,
+                        "agent_type": str(agent_response_chunk.agent_type.value) if agent_response_chunk.agent_type else "unknown",
+                        "confidence": float(agent_response_chunk.confidence) if agent_response_chunk.confidence else 0.0,
+                        "metadata": safe_metadata,
+                        "timestamp": datetime.now(timezone.utc).isoformat()
+                    },
+                    "session_id": session_id,
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                }
+                
+                # Send both the final response and the completion message
+                await websocket.send_json(final_response)
+                return {"type": "chat_response_complete", "session_id": session_id, "timestamp": datetime.now(timezone.utc).isoformat() }
+
             except Exception as e:
                 logger.error(f"Hiba a coordinator agent hívásakor: {e}")
                 return self._create_error_response("agent_error", "Agent feldolgozási hiba")
-            
-            # Válasz üzenet létrehozása (JSON-serializable metadata-val)
-            safe_metadata = {}
-            if agent_response.metadata:
-                for key, value in agent_response.metadata.items():
-                    # Filter out non-serializable objects
-                    if isinstance(value, (str, int, float, bool, type(None), list, dict)):
-                        safe_metadata[key] = value
-                    else:
-                        safe_metadata[key] = str(value)  # Convert to string for serialization
-            
-            response_message = ChatMessage(
-                id=str(uuid.uuid4()),
-                session_id=session_id,
-                type=MessageType.ASSISTANT,
-                content=agent_response.response_text,
-                metadata={
-                    "agent_type": str(agent_response.agent_type.value) if agent_response.agent_type else "unknown",
-                    "confidence": float(agent_response.confidence) if agent_response.confidence else 0.0,
-                    "processing_time": float(agent_response.processing_time) if agent_response.processing_time else 0.0,
-                    **safe_metadata
-                }
-            )
-            
-            # Válasz mentése a session-be
-            session.messages.append(response_message)
-            await self._update_session_cache(session)
-            
-            # Válasz küldése (JSON-serializable értékekkel)
-            return {
-                "type": "chat_response",
-                "data": {
-                    "message_id": response_message.id,
-                    "content": response_message.content,
-                    "agent_type": str(agent_response.agent_type.value) if agent_response.agent_type else "unknown",
-                    "confidence": float(agent_response.confidence) if agent_response.confidence else 0.0,
-                    "timestamp": response_message.timestamp.isoformat(),
-                    "metadata": safe_metadata  # Use the safe metadata
-                },
-                "session_id": session_id,
-                "timestamp": datetime.now(timezone.utc).isoformat()
-            }
             
         except Exception as e:
             logger.error(f"Hiba a chat üzenet feldolgozásakor: {e}")

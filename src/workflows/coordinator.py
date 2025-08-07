@@ -9,7 +9,7 @@ LangGraph workflow architektúrával, amely agent caching, enhanced routing
 import asyncio
 import time
 from datetime import datetime, timezone
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, AsyncGenerator
 from dataclasses import dataclass
 
 from langchain_core.messages import HumanMessage, AIMessage
@@ -112,15 +112,15 @@ class CoordinatorAgent:
                     print(f"⚠️ Agent preloading failed: {e}")
                 self._agents_preloaded = True  # Mark as attempted to avoid retries
     
-    async def process_message(
+    async def stream_message(
         self,
         message: str,
         user: Optional[User] = None,
         session_id: Optional[str] = None,
         dependencies: Optional[CoordinatorDependencies] = None
-    ) -> AgentResponse:
+    ) -> AsyncGenerator[AgentResponse, None]:
         """
-        Üzenet feldolgozása Redis cache támogatással.
+        Üzenet feldolgozása Redis cache támogatással, streaming módban.
         
         Args:
             message: Feldolgozandó üzenet
@@ -128,8 +128,8 @@ class CoordinatorAgent:
             session_id: Session azonosító
             dependencies: Függőségek
             
-        Returns:
-            Agent válasz
+        Yields:
+            Agent válasz chunk-ok
         """
         start_time = asyncio.get_event_loop().time()
         
@@ -146,12 +146,13 @@ class CoordinatorAgent:
             # 3. Threat detection
             threat_analysis = await self._threat_detector.analyze_message(message)
             if threat_analysis.get("threat_level", "low") == "high":
-                return AgentResponse(
+                yield AgentResponse(
                     agent_type=AgentType.COORDINATOR,
                     response_text="Sajnálom, ez az üzenet nem feldolgozható biztonsági okokból.",
                     confidence=0.0,
                     metadata={"threat_detected": True, "threat_analysis": threat_analysis}
                 )
+                return
             
             # 4. Check Redis cache for session
             if self._session_cache and session_id:
@@ -179,8 +180,8 @@ class CoordinatorAgent:
                 if cached_response:
                     # Check if cache response is valid
                     if isinstance(cached_response, dict) and "error" not in cached_response:
-                        # Return cached response
-                        return AgentResponse(
+                        # Yield cached response and return
+                        yield AgentResponse(
                             agent_type=AgentType.COORDINATOR,
                             response_text=cached_response.get("response_text", "Cache-elt válasz"),
                             confidence=cached_response.get("confidence", 0.8),
@@ -189,9 +190,10 @@ class CoordinatorAgent:
                                 "cached": True,
                                 "cache_source": "redis",
                                 "session_id": session_id,
-                            "user_id": user.id if user else None
-                        }
-                    )
+                                "user_id": user.id if user else None
+                            }
+                        )
+                        return
             
             # 6. Create dependencies
             if dependencies is None:
@@ -206,7 +208,7 @@ class CoordinatorAgent:
                     gdpr_compliance=self._gdpr_compliance
                 )
             
-            # 7. Process message through correct LangGraph workflow
+            # 7. Process message through correct LangGraph workflow (streaming)
             user_context = {
                 "user_id": user.id if user else None,
                 "email": user.email if user else None,
@@ -217,67 +219,95 @@ class CoordinatorAgent:
                 "audit_logger": dependencies.audit_logger
             }
             
-            final_state = await self._workflow_manager.process_message(
+            full_response_text = ""
+            last_metadata = {}
+            last_confidence = 0.0
+            state_chunk = None  # Initialize to avoid UnboundLocalError
+            
+            async for state_chunk in self._workflow_manager.stream_message(
                 user_message=message,
                 user_context=user_context,
                 security_context=dependencies.security_context
-            )
+            ):
+                response_text_chunk = self._extract_response_from_state(state_chunk)
+                confidence_chunk = self._extract_confidence_from_state(state_chunk)
+                metadata_chunk = self._extract_metadata_from_state(state_chunk)
+                
+                # Only yield if there's new text or significant metadata change
+                if response_text_chunk and response_text_chunk != full_response_text:
+                    yield AgentResponse(
+                        agent_type=AgentType.COORDINATOR,
+                        response_text=response_text_chunk[len(full_response_text):],
+                        confidence=confidence_chunk,
+                        metadata={
+                            "session_id": session_id,
+                            "user_id": user.id if user else None,
+                            "langgraph_used": True,
+                            "enhanced_workflow": True,
+                            "redis_cache_used": self._cache_initialized,
+                            "workflow_summary": get_state_summary(state_chunk),
+                            "processing_time": asyncio.get_event_loop().time() - start_time,
+                            "threat_analysis": threat_analysis,
+                            "cached": False,
+                            "cache_source": "redis" if self._cache_initialized else "memory",
+                            **metadata_chunk
+                        }
+                    )
+                    full_response_text = response_text_chunk
+                    last_metadata = metadata_chunk
+                    last_confidence = confidence_chunk
             
-            # 8. Extract response from final state
-            response_text = self._extract_response_from_state(final_state)
-            confidence = self._extract_confidence_from_state(final_state)
-            metadata = self._extract_metadata_from_state(final_state)
-            
-            # 9. Calculate processing time
-            processing_time = asyncio.get_event_loop().time() - start_time
-            
-            # 10. Cache the response in Redis
-            if self._performance_cache:
+            # Ensure a final response is sent if the last chunk was empty or only metadata changed
+            if not full_response_text:
+                if state_chunk is not None:
+                    final_response_text = self._extract_response_from_state(state_chunk) # Get final response from last state
+                else:
+                    final_response_text = "Sajnálom, nem sikerült válaszolni."
+                
+                yield AgentResponse(
+                    agent_type=AgentType.COORDINATOR,
+                    response_text=final_response_text,
+                    confidence=last_confidence,
+                    metadata={
+                        "session_id": session_id,
+                        "user_id": user.id if user else None,
+                        "langgraph_used": True,
+                        "enhanced_workflow": True,
+                        "redis_cache_used": self._cache_initialized,
+                        "workflow_summary": get_state_summary(state_chunk) if state_chunk else {},
+                        "processing_time": asyncio.get_event_loop().time() - start_time,
+                        "threat_analysis": threat_analysis,
+                        "cached": False,
+                        "cache_source": "redis" if self._cache_initialized else "memory",
+                        **last_metadata
+                    }
+                )
+
+            # 8. Cache the final response in Redis
+            if self._performance_cache and full_response_text:
                 response_data = {
-                    "response_text": response_text,
-                    "confidence": confidence,
-                    "metadata": metadata,
-                    "processing_time": processing_time,
+                    "response_text": full_response_text,
+                    "confidence": last_confidence,
+                    "metadata": last_metadata,
+                    "processing_time": asyncio.get_event_loop().time() - start_time,
                     "created_at": time.time()
                 }
                 await self._performance_cache.cache_agent_response(cache_key, response_data)
             
-            # 11. Create agent response
-            response = AgentResponse(
-                agent_type=AgentType.COORDINATOR,
-                response_text=response_text,
-                confidence=confidence,
-                metadata={
-                    "session_id": session_id,
-                    "user_id": user.id if user else None,
-                    "langgraph_used": True,
-                    "enhanced_workflow": True,
-                    "redis_cache_used": self._cache_initialized,
-                    "workflow_summary": get_state_summary(final_state),
-                    "processing_time": processing_time,
-                    "threat_analysis": threat_analysis,
-                    "cached": False,
-                    "cache_source": "redis" if self._cache_initialized else "memory",
-                    **metadata
-                }
-            )
-            
-            # 12. Audit logging for successful interaction
+            # 9. Audit logging for successful interaction
             await log_agent_interaction(
                 user_id=user.id if user else "anonymous",
                 agent_name="coordinator",
                 query=message,
-                response=response_text,
+                response=full_response_text,
                 session_id=session_id,
                 success=True
             )
             
             if self.verbose:
-                print(f"Koordinátor Agent válasz: {response_text[:100]}...")
-                print(f"Feldolgozási idő: {processing_time:.2f}s")
+                print(f"Koordinátor Agent válasz: {full_response_text[:100]}...")
+                print(f"Feldolgozási idő: {asyncio.get_event_loop().time() - start_time:.2f}s")
                 print(f"Redis cache használva: {self._cache_initialized}")
-            
-            return response
             
         except Exception as e:
             # Calculate processing time for error case
@@ -312,7 +342,50 @@ class CoordinatorAgent:
             if self.verbose:
                 print(f"Koordinátor Agent hiba: {e}")
             
-            return error_response
+            yield error_response
+    
+    async def process_message(
+        self,
+        message: str,
+        user: Optional[User] = None,
+        session_id: Optional[str] = None,
+        dependencies: Optional[CoordinatorDependencies] = None
+    ) -> AgentResponse:
+        """
+        Backward-compatible process_message method.
+        
+        This method collects all streaming chunks and returns the final response.
+        It's provided for backward compatibility with existing tests and code.
+        
+        Args:
+            message: Feldolgozandó üzenet
+            user: Felhasználó objektum
+            session_id: Session azonosító
+            dependencies: Függőségek
+            
+        Returns:
+            Final agent response
+        """
+        final_response = None
+        
+        # Collect all streaming responses
+        async for response_chunk in self.stream_message(message, user, session_id, dependencies):
+            final_response = response_chunk
+        
+        # Return the final response or a default if no responses were yielded
+        if final_response is None:
+            final_response = AgentResponse(
+                agent_type=AgentType.COORDINATOR,
+                response_text="Sajnálom, nem sikerült válaszolni.",
+                confidence=0.0,
+                metadata={
+                    "error": "No response generated",
+                    "session_id": session_id,
+                    "user_id": user.id if user else None
+                }
+            )
+        
+        return final_response
     
     def _extract_response_from_state(self, state) -> str:
         """Válasz kinyerése a LangGraph state-ből."""
@@ -541,9 +614,40 @@ async def process_coordinator_message(
     user: Optional[User] = None,
     session_id: Optional[str] = None,
     dependencies: Optional[CoordinatorDependencies] = None
+) -> AsyncGenerator[AgentResponse, None]:
+    """
+    Koordinátor üzenet feldolgozása, streaming módban.
+    
+    Args:
+        message: Felhasználói üzenet
+        user: Felhasználó objektum
+        session_id: Session azonosító
+        dependencies: Koordinátor függőségei
+        
+    Yields:
+        Agent válasz chunk-ok
+    """
+    agent = get_coordinator_agent()
+    async for response_chunk in agent.stream_message(
+        message=message,
+        user=user,
+        session_id=session_id,
+        dependencies=dependencies
+    ):
+        yield response_chunk
+
+
+async def process_coordinator_message_single(
+    message: str,
+    user: Optional[User] = None,
+    session_id: Optional[str] = None,
+    dependencies: Optional[CoordinatorDependencies] = None
 ) -> AgentResponse:
     """
-    Koordinátor üzenet feldolgozása.
+    Koordinátor üzenet feldolgozása, egyszeri válasz módban.
+    
+    Backward-compatible method that collects all streaming responses
+    and returns the final response.
     
     Args:
         message: Felhasználói üzenet
@@ -552,7 +656,7 @@ async def process_coordinator_message(
         dependencies: Koordinátor függőségei
         
     Returns:
-        Agent válasz
+        Final agent response
     """
     agent = get_coordinator_agent()
     return await agent.process_message(

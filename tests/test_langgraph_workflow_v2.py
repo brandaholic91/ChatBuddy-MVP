@@ -65,7 +65,9 @@ async def test_workflow_manager_v2_process_message():
     manager = LangGraphWorkflowManagerV2()
     # Mock the workflow to avoid full execution
     mock_workflow = MagicMock()
-    mock_workflow.ainvoke = AsyncMock(return_value=AgentState(
+    
+    # Mock both ainvoke and astream methods
+    test_state = AgentState(
         messages=[HumanMessage(content="test"), AIMessage(content="response")],
         current_question="test",
         active_agent="general",
@@ -74,7 +76,15 @@ async def test_workflow_manager_v2_process_message():
         workflow_steps=[],
         agent_responses={},
         metadata={}
-    ))
+    )
+    
+    mock_workflow.ainvoke = AsyncMock(return_value=test_state)
+    
+    # Mock astream to return an async generator with the test state
+    async def mock_astream(*args, **kwargs):
+        yield test_state
+    
+    mock_workflow.astream = mock_astream
     manager._workflow = mock_workflow
     manager._initialized = True
 

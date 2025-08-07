@@ -112,13 +112,30 @@ class TestWebSocketEndpoints:
             }
             websocket.send_json(chat_message)
             
-            # Válasz ellenőrzése
-            response = websocket.receive_json()
-            assert response["type"] == "chat_response"
-            assert "content" in response["data"]
-            assert "agent_type" in response["data"]
-            assert "confidence" in response["data"]
-            assert "timestamp" in response["data"]
+            # Válasz ellenőrzése (streaming format)
+            # First, we may receive multiple chunk messages
+            final_response = None
+            max_attempts = 5  # Maximum attempts to find final response
+            
+            for _ in range(max_attempts):
+                response = websocket.receive_json()
+                if response["type"] == "chat_response":
+                    final_response = response
+                    break
+                elif response["type"] == "chat_response_chunk":
+                    # Continue to next message
+                    continue
+                else:
+                    # Unexpected message type
+                    break
+            
+            # Check we got a final chat_response
+            assert final_response is not None, f"Did not receive chat_response, last response was: {response}"
+            assert final_response["type"] == "chat_response"
+            assert "content" in final_response["data"]
+            assert "agent_type" in final_response["data"]
+            assert "confidence" in final_response["data"]
+            assert "timestamp" in final_response["data"]
     
     def test_websocket_empty_message_error(self, client, session_id):
         """Üres üzenet hibakezelésének tesztje"""

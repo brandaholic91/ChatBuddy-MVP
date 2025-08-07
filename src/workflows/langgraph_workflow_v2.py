@@ -7,7 +7,7 @@ https://atalupadhyay.wordpress.com/2025/02/15/a-step-by-step-guide-with-pydantic
 """
 
 import json
-from typing import Dict, Any, List, Optional, Literal, TypedDict, Annotated
+from typing import Dict, Any, List, Optional, Literal, TypedDict, Annotated, AsyncGenerator
 from langchain_core.messages import HumanMessage, AIMessage, BaseMessage
 from langgraph.graph import StateGraph, START, END
 from langgraph.graph.message import add_messages
@@ -334,29 +334,29 @@ class LangGraphWorkflowManagerV2:
         self._workflow = None
         self._initialized = False
     
-    def get_workflow(self) -> StateGraph:
-        """Get the compiled workflow (lazy loading)."""
-        if not self._initialized:
+    def get_workflow(self):
+        """Get or create the workflow instance."""
+        if self._workflow is None:
             self._workflow = create_correct_langgraph_workflow()
             self._initialized = True
         return self._workflow
     
-    async def process_message(
+    async def stream_message(
         self,
         user_message: str,
         user_context: Optional[Dict[str, Any]] = None,
         security_context: Optional[Dict[str, Any]] = None
-    ) -> AgentState:
+    ) -> AsyncGenerator[AgentState, None]:
         """
-        Process a user message through the correct workflow.
+        Stream a user message through the correct workflow.
         
         Args:
             user_message: User's input message
             user_context: User context information
             security_context: Security context
             
-        Returns:
-            Final workflow state
+        Yields:
+            AgentState chunks as they become available
         """
         try:
             # Create initial state following the article pattern
@@ -373,9 +373,9 @@ class LangGraphWorkflowManagerV2:
             
             # Get workflow and process
             workflow = self.get_workflow()
-            final_state = await workflow.ainvoke(initial_state)
             
-            return final_state
+            async for state_chunk in workflow.astream(initial_state):
+                yield state_chunk
             
         except Exception as e:
             # Error handling
@@ -392,8 +392,51 @@ class LangGraphWorkflowManagerV2:
                 "agent_responses": {},
                 "metadata": {"error": str(e)}
             }
+            yield error_state
+    
+    async def process_message(
+        self,
+        user_message: str,
+        user_context: Optional[Dict[str, Any]] = None,
+        security_context: Optional[Dict[str, Any]] = None
+    ) -> AgentState:
+        """
+        Backward-compatible process_message method.
+        
+        This method collects all streaming chunks and returns the final state.
+        It's provided for backward compatibility with existing tests and code.
+        
+        Args:
+            user_message: User's input message
+            user_context: User context information
+            security_context: Security context
             
-            return error_state
+        Returns:
+            Final AgentState
+        """
+        final_state = None
+        
+        # Collect all streaming states
+        async for state_chunk in self.stream_message(user_message, user_context, security_context):
+            final_state = state_chunk
+        
+        # Return the final state or a default if no states were yielded
+        if final_state is None:
+            final_state = {
+                "messages": [
+                    HumanMessage(content=user_message),
+                    AIMessage(content="Sajnálom, nem sikerült válaszolni.")
+                ],
+                "current_question": user_message,
+                "active_agent": "error",
+                "user_context": user_context or {},
+                "security_context": security_context,
+                "workflow_steps": ["workflow_started", "no_response_error"],
+                "agent_responses": {},
+                "metadata": {"error": "No response generated"}
+            }
+        
+        return final_state
 
 
 # Global workflow manager instance

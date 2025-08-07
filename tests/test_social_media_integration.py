@@ -63,7 +63,7 @@ class TestFacebookMessengerClient:
             hashlib.sha256
         ).hexdigest()
         
-        result = messenger_client.verify_signature(expected_signature, body)
+        result = messenger_client.verify_signature(expected_signature.encode(), body)
         assert result is True
     
     def test_verify_signature_failure(self, messenger_client):

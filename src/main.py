@@ -5,8 +5,10 @@ Chatbuddy MVP - Main FastAPI application.
 import os
 import json
 from datetime import datetime, timezone
+import traceback
 from typing import Any, Dict, List, Union
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
+from src.utils.error_handler import ChatBuddyError, get_error_message
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
@@ -232,12 +234,14 @@ async def health_check():
         }
         
     except Exception as e:
+        error_info = get_error_message("GENERIC_ERROR", error_code="E001")
         return JSONResponse(
             status_code=500,
             content={
                 "status": "unhealthy",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
-                "error": str(e)
+                "error": error_info["message"],
+                "details": str(e) if os.getenv("ENVIRONMENT") != "production" else None
             }
         )
 
@@ -303,26 +307,20 @@ async def api_info():
 @app.exception_handler(404)
 async def not_found_handler(request, exc):
     """Handle 404 errors."""
+    error_info = get_error_message("GENERIC_ERROR", error_code="E001")
     return JSONResponse(
         status_code=404,
-        content={
-            "error": "not_found",
-            "message": "Endpoint not found",
-            "path": str(request.url.path)
-        }
+        content=error_info
     )
 
 
 @app.exception_handler(500)
 async def internal_error_handler(request, exc):
     """Handle 500 errors."""
+    error_info = get_error_message("GENERIC_ERROR", error_code="E001")
     return JSONResponse(
         status_code=500,
-        content={
-            "error": "internal_error",
-            "message": "An unexpected error occurred",
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        }
+        content=error_info
     )
 
 
@@ -395,7 +393,7 @@ async def get_csrf_token(request: Request):
         }
     except Exception as e:
         logger.error(f"CSRF token generation error: {e}")
-        raise HTTPException(status_code=500, detail="CSRF token generation failed")
+        raise ChatBuddyError(error_key="GENERIC_ERROR", message="CSRF token generálás sikertelen.")
 
 
 # Chat endpoints
@@ -419,16 +417,10 @@ async def chat_endpoint(request: ChatRequest, request_obj: Request):
         
         # Enhanced Input validation and sanitization
         if not request.message or len(request.message.strip()) == 0:
-            raise HTTPException(
-                status_code=400,
-                detail="Üres üzenet"
-            )
+            raise ChatBuddyError(error_key="INVALID_INPUT", message="Üres üzenet.")
         
         if len(request.message) > 4000:  # Increased limit
-            raise HTTPException(
-                status_code=400,
-                detail="Túl hosszú üzenet (max 4000 karakter)"
-            )
+            raise ChatBuddyError(error_key="INVALID_INPUT", message="Túl hosszú üzenet (max 4000 karakter).")
         
         # Import security utilities
         from src.config.security import sanitize_string, get_threat_detector
@@ -436,10 +428,7 @@ async def chat_endpoint(request: ChatRequest, request_obj: Request):
         # Sanitize input message
         sanitized_message = sanitize_string(request.message, max_length=4000)
         if not sanitized_message:
-            raise HTTPException(
-                status_code=400,
-                detail="Érvénytelen üzenet tartalom"
-            )
+            raise ChatBuddyError(error_key="INVALID_INPUT", message="Érvénytelen üzenet tartalom.")
         
         # Security audit logging
         audit_logger = get_audit_logger()
@@ -457,10 +446,7 @@ async def chat_endpoint(request: ChatRequest, request_obj: Request):
                 },
                 severity=AuditSeverity.HIGH
             )
-            raise HTTPException(
-                status_code=400,
-                detail="Kérés blokkolva biztonsági okokból"
-            )
+            raise ChatBuddyError(error_key="UNAUTHORIZED_ACCESS", message="Kérés blokkolva biztonsági okokból.")
         
         # Replace original message with sanitized version
         request.message = sanitized_message
@@ -495,22 +481,50 @@ async def chat_endpoint(request: ChatRequest, request_obj: Request):
         
         return response
         
+    except ChatBuddyError as e:
+        # Custom ChatBuddyError already contains detailed info
+        audit_logger = get_audit_logger()
+        await audit_logger.log_security_event(
+            event_type=f"chat_error_{e.error_key}",
+            user_id=request.user_id or "anonymous",
+            details=e.to_dict(),
+            ip_address=source_ip if 'source_ip' in locals() else None,
+            severity=AuditSeverity.ERROR
+        )
+        raise HTTPException(
+            status_code=400 if e.category == "Validation" else 500,
+            detail=e.to_dict()
+        )
     except HTTPException:
         # Re-raise HTTP exceptions
         raise
     except Exception as e:
-        # Log security event for errors
         audit_logger = get_audit_logger()
+        error_key = "GENERIC_ERROR"
+        chat_buddy_error = ChatBuddyError(error_key=error_key, original_error=str(e))
+        
+        log_severity = AuditSeverity.CRITICAL if os.getenv("ENVIRONMENT") == "production" else AuditSeverity.ERROR
+        
         await audit_logger.log_security_event(
-            event_type="chat_error",
+            event_type=f"chat_error_{error_key}",
             user_id=request.user_id or "anonymous",
-            details={"error": str(e)},
-            ip_address=source_ip if 'source_ip' in locals() else None
+            details={
+                "error_key": error_key,
+                "message": chat_buddy_error.message,
+                "action": chat_buddy_error.action,
+                "category": chat_buddy_error.category,
+                "original_error": str(e),
+                "traceback": traceback.format_exc() if os.getenv("ENVIRONMENT") != "production" else "Traceback suppressed in production"
+            },
+            ip_address=source_ip if 'source_ip' in locals() else None,
+            severity=log_severity
         )
+        
+        logger.error(f"Error processing chat: {e}", exc_info=True)
         
         raise HTTPException(
             status_code=500,
-            detail="Chat feldolgozási hiba"
+            detail=chat_buddy_error.to_dict()
         )
 
 
@@ -561,28 +575,31 @@ async def websocket_chat_endpoint(websocket: WebSocket, session_id: str):
         except WebSocketDisconnect:
             logger.info(f"WebSocket kapcsolat lezárva: {connection_id}")
         except Exception as e:
-            logger.error(f"Hiba a WebSocket kommunikációban: {e}")
+            logger.error(f"Hiba a WebSocket kommunikációban: {e}", exc_info=True)
+            error_info = get_error_message("NETWORK_ERROR") # Or a more specific error key
             try:
                 await websocket.send_json({
                     "type": "error",
                     "data": {
-                        "error_type": "communication_error",
-                        "error_message": "Kommunikációs hiba történt",
+                        "error_type": error_info["code"],
+                        "error_message": error_info["message"],
+                        "action": error_info["action"],
                         "timestamp": datetime.now(timezone.utc).isoformat()
                     }
                 })
-            except:
-                pass
+            except Exception as send_error:
+                logger.error(f"Hiba a WebSocket hibaüzenet küldésekor: {send_error}")
         finally:
             # Kapcsolat eltávolítása
             await websocket_manager.disconnect(connection_id)
             
     except Exception as e:
-        logger.error(f"Hiba a WebSocket endpoint-ban: {e}")
+        logger.error(f"Hiba a WebSocket endpoint-ban: {e}", exc_info=True)
+        error_info = get_error_message("GENERIC_ERROR")
         try:
-            await websocket.close(code=1011, reason="Internal error")
-        except:
-            pass
+            await websocket.close(code=1011, reason=error_info["message"])
+        except Exception as close_error:
+            logger.error(f"Hiba a WebSocket kapcsolat lezárásakor: {close_error}")
 
 
 @app.get("/api/v1/websocket/stats")
@@ -600,10 +617,11 @@ async def websocket_stats():
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
     except Exception as e:
-        logger.error(f"Hiba a WebSocket statisztikák lekérésekor: {e}")
+        error_info = get_error_message("GENERIC_ERROR", error_code="E001")
+        logger.error(f"Hiba a WebSocket statisztikák lekérésekor: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail="Hiba a WebSocket statisztikák lekérésekor"
+            detail=error_info
         )
 
 
@@ -636,10 +654,11 @@ async def workflow_performance():
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
     except Exception as e:
-        logger.error(f"Hiba a workflow performance lekérésekor: {e}")
+        error_info = get_error_message("GENERIC_ERROR", error_code="E001")
+        logger.error(f"Hiba a workflow performance lekérésekor: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail="Hiba a workflow performance lekérésekor"
+            detail=error_info
         )
 
 
@@ -673,10 +692,11 @@ async def cache_stats():
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
     except Exception as e:
-        logger.error(f"Hiba a cache statisztikák lekérésekor: {e}")
+        error_info = get_error_message("GENERIC_ERROR", error_code="E001")
+        logger.error(f"Hiba a cache statisztikák lekérésekor: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail="Hiba a cache statisztikák lekérésekor"
+            detail=error_info
         )
 
 
@@ -706,10 +726,11 @@ async def invalidate_cache(pattern: str = None):
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
     except Exception as e:
-        logger.error(f"Hiba a cache érvénytelenítésekor: {e}")
+        error_info = get_error_message("GENERIC_ERROR", error_code="E001")
+        logger.error(f"Hiba a cache érvénytelenítésekor: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
-            detail="Hiba a cache érvénytelenítésekor"
+            detail=error_info
         )
 
 
@@ -757,7 +778,7 @@ async def verify_messenger_webhook(
             if hub_mode == "subscribe" and hub_verify_token == "test_token":
                 return int(hub_challenge)
             else:
-                raise HTTPException(status_code=500, detail="Messenger client not available")
+                raise ChatBuddyError(error_key="GENERIC_ERROR", message="Messenger kliens nem elérhető.")
         
         challenge = await messenger_client.verify_webhook(hub_mode, hub_verify_token, hub_challenge)
         
@@ -772,8 +793,8 @@ async def verify_messenger_webhook(
         
         return challenge
     except Exception as e:
-        logger.error(f"Error verifying Messenger webhook: {e}")
-        raise HTTPException(status_code=403, detail="Forbidden")
+        logger.error(f"Hiba a Messenger webhook ellenőrzésekor: {e}", exc_info=True)
+        raise ChatBuddyError(error_key="UNAUTHORIZED_ACCESS", message="Hozzáférés megtagadva.")
 
 
 @app.post("/webhook/messenger")
@@ -802,10 +823,10 @@ async def handle_messenger_webhook(request: Request):
             if signature == "test_signature":
                 pass
             else:
-                raise HTTPException(status_code=500, detail="Messenger client not available")
+                raise ChatBuddyError(error_key="GENERIC_ERROR", message="Messenger kliens nem elérhető.")
         else:
             if not messenger_client.verify_signature(signature, body):
-                raise HTTPException(status_code=403, detail="Invalid signature")
+                raise ChatBuddyError(error_key="UNAUTHORIZED_ACCESS", message="Érvénytelen aláírás.")
         
         # Parse webhook data
         webhook_data = json.loads(body)
@@ -839,8 +860,8 @@ async def handle_messenger_webhook(request: Request):
         
         return {"status": "ok", "result": result.response_text}
     except Exception as e:
-        logger.error(f"Error processing Messenger webhook: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        logger.error(f"Hiba a Messenger webhook feldolgozásakor: {e}", exc_info=True)
+        raise ChatBuddyError(error_key="GENERIC_ERROR", message="Belső szerver hiba.")
 
 
 @app.get("/webhook/whatsapp")
@@ -870,7 +891,7 @@ async def verify_whatsapp_webhook(
             if hub_mode == "subscribe" and hub_verify_token == "test_token":
                 return int(hub_challenge)
             else:
-                raise HTTPException(status_code=500, detail="WhatsApp client not available")
+                raise ChatBuddyError(error_key="GENERIC_ERROR", message="WhatsApp kliens nem elérhető.")
         
         challenge = await whatsapp_client.verify_webhook(hub_mode, hub_verify_token, hub_challenge)
         
@@ -885,8 +906,8 @@ async def verify_whatsapp_webhook(
         
         return challenge
     except Exception as e:
-        logger.error(f"Error verifying WhatsApp webhook: {e}")
-        raise HTTPException(status_code=403, detail="Forbidden")
+        logger.error(f"Hiba a WhatsApp webhook ellenőrzésekor: {e}", exc_info=True)
+        raise ChatBuddyError(error_key="UNAUTHORIZED_ACCESS", message="Hozzáférés megtagadva.")
 
 
 @app.post("/webhook/whatsapp")
@@ -943,8 +964,8 @@ async def handle_whatsapp_webhook(request: Request):
         
         return {"status": "ok", "result": result.response_text}
     except Exception as e:
-        logger.error(f"Error processing WhatsApp webhook: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        logger.error(f"Hiba a WhatsApp webhook feldolgozásakor: {e}", exc_info=True)
+        raise ChatBuddyError(error_key="GENERIC_ERROR", message="Belső szerver hiba.")
 
 
 @app.get("/api/v1/social-media/status")
@@ -983,8 +1004,5 @@ async def social_media_status():
         
         return status
     except Exception as e:
-        logger.error(f"Error getting social media status: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail="Hiba a social media állapot lekérésekor"
-        ) 
+        logger.error(f"Hiba a social media állapot lekérésekor: {e}", exc_info=True)
+        raise ChatBuddyError(error_key="GENERIC_ERROR", message="Hiba a social media állapot lekérésekor.") 
