@@ -138,7 +138,7 @@ dmypy.json
 cython_debug/
 
 # IDE
-.vscode/
+# .vscode/  # Commented out to allow VS Code settings to be committed
 .idea/
 *.swp
 *.swo

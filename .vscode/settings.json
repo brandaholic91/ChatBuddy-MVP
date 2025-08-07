@@ -1,0 +1,16 @@
+{
+  // Line ending beállítások
+  "files.eol": "\n",
+  "files.insertFinalNewline": true,
+  "editor.renderFinalNewline": false,
+  "files.trimFinalNewlines": true,
+  "files.trimTrailingWhitespace": true,
+  
+  // Git beállítások
+  "git.autorefresh": true,
+  "git.enableSmartCommit": true,
+  
+  // Whitespace megjelenítés
+  "editor.renderWhitespace": "selection",
+  "editor.detectIndentation": true
+}
