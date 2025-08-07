@@ -494,7 +494,7 @@ class TestRLSIntegrationTesting:
         # Mock the DatabaseSetup to avoid actual Supabase connection
         with patch('src.integrations.database.setup_database.SupabaseClient') as mock_client_class:
             mock_client_class.return_value = mock_supabase
-            return DatabaseSetup(config)
+            return DatabaseSetup()
     
     def test_database_setup_with_rls(self, database_setup, mock_supabase):
         """Teszteli a database setup-ot RLS-szel"""

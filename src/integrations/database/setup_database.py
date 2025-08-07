@@ -25,13 +25,14 @@ logger = get_logger(__name__)
 class DatabaseSetup:
     """Adatbázis setup kezelő"""
     
-    def __init__(self, config: SupabaseConfig):
+    def __init__(self):
         """Inicializálja a database setup-ot"""
-        self.config = config
-        self.supabase = SupabaseClient(config)
+        from src.integrations.database.supabase_client import get_supabase_client
+        self.supabase = get_supabase_client()
         self.schema_manager = SchemaManager(self.supabase)
         self.rls_manager = RLSPolicyManager(self.supabase)
-        self.vector_ops = VectorOperations(self.supabase, openai_api_key=config.openai_api_key)
+        import os
+        self.vector_ops = VectorOperations(self.supabase, openai_api_key=os.getenv("OPENAI_API_KEY"))
     
     async def setup_complete_database(self) -> Dict[str, Any]:
         """Teljes adatbázis setup végrehajtása"""

@@ -27,7 +27,8 @@ class DatabaseSchemaFixer:
     
     def __init__(self):
         """Inicializálja a javítót"""
-        self.supabase_client = SupabaseClient()
+        from src.integrations.database.supabase_client import get_supabase_client
+        self.supabase_client = get_supabase_client()
     
     def fix_products_table(self) -> bool:
         """Javítja a products táblát"""

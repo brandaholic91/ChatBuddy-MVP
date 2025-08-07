@@ -224,7 +224,8 @@ class SchemaManager:
             CREATE OR REPLACE FUNCTION search_products(
                 query_embedding VECTOR(1536),
                 similarity_threshold FLOAT DEFAULT 0.5,
-                match_count INT DEFAULT 10
+                match_count INT DEFAULT 10,
+                ef_search INT DEFAULT 40
             )
             RETURNS TABLE (
                 id UUID,
@@ -237,7 +238,8 @@ class SchemaManager:
                 metadata JSONB
             )
             LANGUAGE SQL
-            AS $$
+            AS $
+            SET hnsw.ef_search = ef_search;
             SELECT
                 p.id,
                 p.name,
@@ -253,7 +255,7 @@ class SchemaManager:
             AND 1 - (p.embedding <=> query_embedding) >= similarity_threshold
             ORDER BY p.embedding <=> query_embedding
             LIMIT match_count;
-            $$;
+            $;
             """
             
             # search_products_by_category RPC függvény
@@ -261,7 +263,8 @@ class SchemaManager:
             CREATE OR REPLACE FUNCTION search_products_by_category(
                 query_embedding VECTOR(1536),
                 category_id UUID,
-                match_count INT DEFAULT 10
+                match_count INT DEFAULT 10,
+                ef_search INT DEFAULT 40
             )
             RETURNS TABLE (
                 id UUID,
@@ -274,7 +277,8 @@ class SchemaManager:
                 metadata JSONB
             )
             LANGUAGE SQL
-            AS $$
+            AS $
+            SET hnsw.ef_search = ef_search;
             SELECT
                 p.id,
                 p.name,
@@ -290,7 +294,7 @@ class SchemaManager:
             AND p.embedding IS NOT NULL
             ORDER BY p.embedding <=> query_embedding
             LIMIT match_count;
-            $$;
+            $;
             """
             
             # hybrid_search RPC függvény
@@ -298,7 +302,8 @@ class SchemaManager:
             CREATE OR REPLACE FUNCTION hybrid_search(
                 query_embedding VECTOR(1536),
                 search_filters JSONB DEFAULT '{}',
-                match_count INT DEFAULT 10
+                match_count INT DEFAULT 10,
+                ef_search INT DEFAULT 40
             )
             RETURNS TABLE (
                 id UUID,
@@ -311,7 +316,8 @@ class SchemaManager:
                 metadata JSONB
             )
             LANGUAGE SQL
-            AS $$
+            AS $
+            SET hnsw.ef_search = ef_search;
             SELECT
                 p.id,
                 p.name,
@@ -331,7 +337,7 @@ class SchemaManager:
             AND (search_filters->>'in_stock' IS NULL OR p.stock_quantity > 0)
             ORDER BY p.embedding <=> query_embedding
             LIMIT match_count;
-            $$;
+            $;
             """
             
             # Függvények létrehozása
@@ -693,21 +699,119 @@ class SchemaManager:
     def create_all_tables(self) -> Dict[str, bool]:
         """Létrehozza az összes táblát"""
         try:
-            results = {}
-            
-            # Alap táblák
-            results["users"] = self.create_users_table()
-            results["products"] = self.create_products_table()
-            results["orders"] = self.create_orders_table()
-            results["chat_sessions"] = self.create_chat_sessions_table()
-            results["audit_logs"] = self.create_audit_logs_table()
-            results["user_consents"] = self.create_user_consents_table()
-            
+            sql_commands = []
+            table_names = ["users", "products", "orders", "chat_sessions", "audit_logs", "user_consents"]
+
+            # Collect all table creation SQL statements
+            sql_commands.append(self.get_create_users_table_sql())
+            sql_commands.append(self.get_create_products_table_sql())
+            sql_commands.append(self.get_create_orders_table_sql())
+            sql_commands.append(self.get_create_chat_sessions_table_sql())
+            sql_commands.append(self.get_create_audit_logs_table_sql())
+            sql_commands.append(self.get_create_user_consents_table_sql())
+
+            # Execute all commands in a single batch
+            all_successful = True
+            for sql in sql_commands:
+                if sql: # Ensure SQL is not empty
+                    result = self.supabase.execute_query(sql)
+                    if not (result is not None or "success" in str(result) or "true" in str(result)):
+                        all_successful = False
+                        break # Exit on first failure
+
+            results = {table_name: all_successful for table_name in table_names}
             return results
-            
+
         except Exception as e:
             logger.error(f"Hiba az összes tábla létrehozásakor: {e}")
             return {"error": False}
+
+    def get_create_users_table_sql(self) -> str:
+        """Visszaadja a users tábla létrehozásához szükséges SQL-t"""
+        return """
+            CREATE TABLE IF NOT EXISTS users (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                email TEXT UNIQUE NOT NULL,
+                name TEXT,
+                role TEXT DEFAULT 'customer',
+                status TEXT DEFAULT 'active',
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+            """
+
+    def get_create_products_table_sql(self) -> str:
+        """Visszaadja a products tábla létrehozásához szükséges SQL-t"""
+        return """
+            CREATE TABLE IF NOT EXISTS products (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                name TEXT NOT NULL,
+                description TEXT,
+                price DECIMAL(10,2),
+                brand TEXT,
+                category_id UUID,
+                status TEXT DEFAULT 'active',
+                stock_quantity INTEGER DEFAULT 0,
+                embedding VECTOR(1536),
+                metadata JSONB DEFAULT '{}',
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+            """
+
+    def get_create_orders_table_sql(self) -> str:
+        """Visszaadja az orders tábla létrehozásához szükséges SQL-t"""
+        return """
+            CREATE TABLE IF NOT EXISTS orders (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                user_id UUID REFERENCES users(id),
+                status TEXT DEFAULT 'pending',
+                total_amount DECIMAL(10,2),
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+            """
+
+    def get_create_chat_sessions_table_sql(self) -> str:
+        """Visszaadja a chat_sessions tábla létrehozásához szükséges SQL-t"""
+        return """
+            CREATE TABLE IF NOT EXISTS chat_sessions (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                user_id UUID REFERENCES users(id),
+                status TEXT DEFAULT 'active',
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+                updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+            """
+
+    def get_create_audit_logs_table_sql(self) -> str:
+        """Visszaadja az audit_logs tábla létrehozásához szükséges SQL-t"""
+        return """
+            CREATE TABLE IF NOT EXISTS audit_logs (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                user_id UUID REFERENCES users(id),
+                action TEXT NOT NULL,
+                table_name TEXT,
+                record_id UUID,
+                old_values JSONB,
+                new_values JSONB,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+            """
+
+    def get_create_user_consents_table_sql(self) -> str:
+        """Visszaadja a user_consents tábla létrehozásához szükséges SQL-t"""
+        return """
+            CREATE TABLE IF NOT EXISTS user_consents (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                user_id UUID REFERENCES users(id),
+                consent_type TEXT NOT NULL,
+                granted BOOLEAN DEFAULT FALSE,
+                granted_at TIMESTAMP WITH TIME ZONE,
+                revoked_at TIMESTAMP WITH TIME ZONE,
+                created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+            );
+            """
     
     def create_orders_table(self) -> bool:
         """Létrehozza az orders táblát"""

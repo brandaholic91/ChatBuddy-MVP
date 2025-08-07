@@ -398,7 +398,7 @@ class TestDatabaseSetup:
             mock_vector.get_vector_statistics = AsyncMock(return_value={"total_products": 100})
             mock_vector_class.return_value = mock_vector
             
-            setup = DatabaseSetup(supabase_config)
+            setup = DatabaseSetup()
             results = await setup.setup_complete_database()
             
             assert isinstance(results, dict)
@@ -435,7 +435,7 @@ class TestDatabaseSetup:
             mock_file = Mock()
             mock_open.return_value.__enter__.return_value = mock_file
             
-            setup = DatabaseSetup(supabase_config)
+            setup = DatabaseSetup()
             result = setup.export_schema_documentation("test_schema.md")
             
             assert result is True

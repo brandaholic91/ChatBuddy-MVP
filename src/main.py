@@ -27,6 +27,7 @@ from src.config.gdpr_compliance import get_gdpr_compliance
 from src.integrations.cache import get_redis_cache_service, shutdown_redis_cache_service
 from src.integrations.websocket_manager import websocket_manager, chat_handler
 from src.config.logging import get_logger
+from src.monitoring.performance_tracker import PerformanceTracker
 
 # Load environment variables from .env file
 load_dotenv()
@@ -410,6 +411,8 @@ async def chat_endpoint(request: ChatRequest, request_obj: Request):
     Returns:
         Chat válasz
     """
+    tracker = PerformanceTracker("chat_endpoint")
+    tracker.start()
     try:
         # Extract security information
         source_ip = request_obj.client.host if request_obj.client else None
@@ -464,7 +467,8 @@ async def chat_endpoint(request: ChatRequest, request_obj: Request):
             user = User(id=request.user_id, email="user@example.com")  # Placeholder email
         
         # Koordinátor agent hívása biztonsági paraméterekkel
-        agent_response = await process_coordinator_message(
+        agent_response = await PerformanceTracker("process_coordinator_message").measure_async(
+            process_coordinator_message,
             message=request.message,
             user=user,
             session_id=request.session_id
@@ -526,6 +530,8 @@ async def chat_endpoint(request: ChatRequest, request_obj: Request):
             status_code=500,
             detail=chat_buddy_error.to_dict()
         )
+    finally:
+        tracker.stop("Chat endpoint execution time")
 
 
 # WebSocket endpoints

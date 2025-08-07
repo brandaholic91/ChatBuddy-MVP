@@ -8,9 +8,9 @@ from typing import List, Dict, Any
 @pytest.fixture
 def mock_supabase_client():
     """Mock SupabaseClient fixture"""
-    with patch('src.integrations.database.fix_database_schema.SupabaseClient') as mock:
+    with patch('src.integrations.database.supabase_client.get_supabase_client') as mock_get_client:
         client = Mock()
-        mock.return_value = client
+        mock_get_client.return_value = client
         yield client
 
 @pytest.fixture

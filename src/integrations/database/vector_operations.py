@@ -288,7 +288,8 @@ class VectorOperations:
                 {
                     "query_embedding": query_embedding,
                     "similarity_threshold": similarity_threshold,
-                    "match_count": limit
+                    "match_count": limit,
+                    "ef_search": 100 # Default value, can be made configurable
                 }
             ).execute()
             
@@ -340,7 +341,8 @@ class VectorOperations:
                 {
                     "query_embedding": query_embedding,
                     "category_id": category_id,
-                    "match_count": limit
+                    "match_count": limit,
+                    "ef_search": 100 # Default value, can be made configurable
                 }
             ).execute()
             
@@ -458,15 +460,10 @@ class VectorOperations:
     async def optimize_vector_indexes(self) -> bool:
         """Optimalizálja a vector indexeket"""
         try:
-            # HNSW index paraméterek finomhangolása
+            # Reindex HNSW and IVFFlat indexes
             optimization_queries = [
-                "SET maintenance_work_mem = '2GB';",
-                "SET work_mem = '256MB';",
-                "SET shared_buffers = '1GB';",
-                "SET effective_cache_size = '4GB';",
-                
-                # HNSW index újraépítése
-                "REINDEX INDEX CONCURRENTLY idx_products_embedding;",
+                "REINDEX INDEX CONCURRENTLY idx_products_embedding_hnsw;",
+                "REINDEX INDEX CONCURRENTLY idx_products_embedding_ivfflat;",
                 
                 # Statisztikák frissítése
                 "ANALYZE products;"
