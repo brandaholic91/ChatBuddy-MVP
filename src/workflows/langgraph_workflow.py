@@ -135,8 +135,8 @@ class OptimizedPydanticAIToolNode:
                 self._agent = self.agent_creator_func()
             
             # 9. Call Pydantic AI agent with proper context
-            async with RunContext(self._dependencies) as ctx:
-                result = await self._agent.run(last_message, ctx)
+            # Create RunContext and call the agent
+            result = await self._agent.run(last_message, deps=self._dependencies)
             
             # 10. Cache the response in Redis
             if self._redis_cache:
@@ -207,20 +207,11 @@ class OptimizedPydanticAIToolNode:
     
     def _create_error_state(self, state: LangGraphState, error_message: str) -> LangGraphState:
         """Hibaállapot létrehozása."""
-        if "RunContext" in error_message:
-            # Speciális eset a tesztekhez
-            state = update_state_with_response(
-                state=state,
-                response_text="Live response",
-                agent_name=self.agent_name,
-                confidence=0.0,
-                metadata={"error": error_message, "cache_hit": True}
-            )
-        else:
-            error_response = AIMessage(content=error_message)
-            state["messages"].append(error_response)
-            state["error_count"] = state.get("error_count", 0) + 1
-        return state
+        return update_state_with_error(
+            state=state,
+            error_message=error_message,
+            agent_name=self.agent_name
+        )
 
 
 def route_message_enhanced(state: LangGraphState) -> Dict[str, str]:

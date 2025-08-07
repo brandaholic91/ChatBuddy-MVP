@@ -9,7 +9,10 @@ from src.utils.state_management import (
     finalize_state,
     get_state_summary,
     validate_state,
-    reset_state_for_retry
+    reset_state_for_retry,
+    add_agent_data,
+    get_agent_data,
+    update_performance_metrics
 )
 
 @pytest.fixture
@@ -61,3 +64,31 @@ def test_reset_state_for_retry(initial_state):
     state = reset_state_for_retry(initial_state)
     assert state["retry_attempts"] == 1
     assert state["workflow_step"] == "retry"
+
+def test_add_and_get_agent_data(initial_state):
+    """Test adding and getting agent-specific data"""
+    state = add_agent_data(initial_state, "test_agent", {"key": "value"})
+    agent_data = get_agent_data(state, "test_agent")
+    assert agent_data["key"] == "value"
+
+def test_get_agent_data_non_existent(initial_state):
+    """Test getting data for a non-existent agent"""
+    agent_data = get_agent_data(initial_state, "non_existent_agent")
+    assert agent_data == {}
+
+def test_update_performance_metrics(initial_state):
+    """Test updating performance metrics"""
+    state = update_performance_metrics(initial_state, tokens_used=100, cost=0.01)
+    assert state["tokens_used"] == 100
+    assert state["cost"] == 0.01
+
+def test_validate_state_invalid_types(initial_state):
+    """Test state validation with invalid data types"""
+    invalid_state = initial_state.copy()
+    invalid_state["messages"] = "not a list"
+    assert validate_state(invalid_state) is False
+
+def test_finalize_state_with_final_response(initial_state):
+    """Test finalizing the state with a final response"""
+    state = finalize_state(initial_state, final_response="Goodbye!")
+    assert state["messages"][-1].content == "Goodbye!"
