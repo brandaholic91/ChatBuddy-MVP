@@ -23,10 +23,15 @@ def test_singleton():
     else:
         print("❌ Singleton NOT working!")
     
-    # Check tools
-    print(f"Agent tools: {len(agent1._function_tools)} tools")
-    for tool_name, tool in agent1._function_tools.items():
-        print(f"  - {tool_name}")
+    # FunctionToolset objektum helyes kezelése
+    print(f"Agent tools: {agent1._function_toolset}")  # Len() helyett közvetlen elérés
+    # Vagy használjuk a megfelelő metódust a tools számának lekéréséhez
+    if hasattr(agent1._function_toolset, 'tools'):
+        print(f"Number of tools: {len(agent1._function_toolset.tools)}")
+    elif hasattr(agent1._function_toolset, '__len__'):
+        print(f"Number of tools: {len(agent1._function_toolset)}")
+    else:
+        print("Tools object doesn't support len(), showing object directly")
 
 if __name__ == "__main__":
     test_singleton()

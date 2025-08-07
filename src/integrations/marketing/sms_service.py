@@ -225,8 +225,9 @@ class TwilioSMSService:
         """
         import re
         
-        # Egyszerű telefonszám regex pattern (nemzetközi formátum)
-        pattern = r'^\+?[1-9]\d{1,14}$'
+        # Telefonszám regex pattern - minimum 5 karakteres szám (nemzetközi formátum)
+        # +? optional + jel, [1-9] nem kezdődhet 0-val, \d{4,14} még 4-14 számjegy
+        pattern = r'^\+?[1-9]\d{4,14}$'
         return bool(re.match(pattern, phone))
     
     def format_phone_number(self, phone: str) -> str:

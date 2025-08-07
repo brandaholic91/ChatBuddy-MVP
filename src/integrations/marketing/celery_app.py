@@ -52,16 +52,15 @@ def detect_abandoned_carts(self):
     try:
         logger.info("Kosárelhagyás detektálás indítása...")
         
-        # Teszt környezet ellenőrzése
-        if os.getenv('TESTING') == 'true':
-            logger.info("Teszt környezet - mock eredmény visszaadása")
-            return 0
-        
         # Async függvény hívása sync context-ben
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         
         try:
+            # Teszt környezet ellenőrzése
+            if os.getenv('TESTING') == 'true':
+                logger.info("Teszt környezet - mock eredmény visszaadása")
+                return 0
             result = loop.run_until_complete(_detect_abandoned_carts_async())
             logger.info(f"Kosárelhagyás detektálás befejezve: {result} új abandoned cart")
             return result
@@ -84,16 +83,15 @@ def send_follow_up_email(self, cart_id: str, delay_minutes: int = 30):
     try:
         logger.info(f"Email follow-up küldés indítása cart_id: {cart_id}")
         
-        # Teszt környezet ellenőrzése
-        if os.getenv('TESTING') == 'true':
-            logger.info("Teszt környezet - mock email küldés")
-            return True
-        
         # Async függvény hívása sync context-ben
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         
         try:
+            # Teszt környezet ellenőrzése
+            if os.getenv('TESTING') == 'true':
+                logger.info("Teszt környezet - mock email küldés")
+                return True
             result = loop.run_until_complete(_send_follow_up_email_async(cart_id, delay_minutes))
             logger.info(f"Email follow-up küldés befejezve cart_id: {cart_id}")
             return result
@@ -116,16 +114,15 @@ def send_follow_up_sms(self, cart_id: str, delay_hours: int = 2):
     try:
         logger.info(f"SMS follow-up küldés indítása cart_id: {cart_id}")
         
-        # Teszt környezet ellenőrzése
-        if os.getenv('TESTING') == 'true':
-            logger.info("Teszt környezet - mock SMS küldés")
-            return True
-        
         # Async függvény hívása sync context-ben
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         
         try:
+            # Teszt környezet ellenőrzése
+            if os.getenv('TESTING') == 'true':
+                logger.info("Teszt környezet - mock SMS küldés")
+                return True
             result = loop.run_until_complete(_send_follow_up_sms_async(cart_id, delay_hours))
             logger.info(f"SMS follow-up küldés befejezve cart_id: {cart_id}")
             return result
@@ -148,16 +145,15 @@ def cleanup_old_abandoned_carts(self):
     try:
         logger.info("Régi abandoned cart-ok tisztítása indítása...")
         
-        # Teszt környezet ellenőrzése
-        if os.getenv('TESTING') == 'true':
-            logger.info("Teszt környezet - mock cleanup")
-            return 0
-        
         # Async függvény hívása sync context-ben
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         
         try:
+            # Teszt környezet ellenőrzése
+            if os.getenv('TESTING') == 'true':
+                logger.info("Teszt környezet - mock cleanup")
+                return 0
             result = loop.run_until_complete(_cleanup_old_abandoned_carts_async())
             logger.info(f"Régi abandoned cart-ok tisztítása befejezve: {result} törölt rekord")
             return result
