@@ -37,7 +37,7 @@ class TestRecommendationAgentMock:
     async def test_agent_initialization(self, recommendation_agent_instance):
         """Agent inicializálás tesztje."""
         assert recommendation_agent_instance.model == 'openai:gpt-4o'
-        assert recommendation_agent_instance.agent_type == AgentType.RECOMMENDATIONS
+        assert recommendation_agent_instance.agent_type == AgentType.RECOMMENDATION
     
     async def test_get_user_preferences_success(self, recommendation_agent_instance, mock_recommendation_dependencies):
         """Felhasználói preferenciák lekérdezésének sikeres tesztje."""

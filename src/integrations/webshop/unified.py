@@ -30,42 +30,31 @@ class WebshopPlatform(str, Enum):
 
 class UnifiedWebshopAPI:
     """Egységes webshop API interfész több platformhoz"""
-    
+
     def __init__(self, platform: WebshopPlatform, api_key: str, base_url: str):
         self.platform = platform
         self.api_key = api_key
         self.base_url = base_url
         self.api_client = self._create_api_client()
-    
+
     def _create_api_client(self) -> BaseWebshopAPI:
         """API kliens létrehozása a platform alapján"""
+        # Teszt környezetben mindig konkrét osztályt példányosítunk, hogy patch-elés működjön
         if self.platform == WebshopPlatform.SHOPRENTER:
-            if self.api_key == "mock_key":
-                return MockShoprenterAPI()
-            else:
-                return ShoprenterAPI(self.api_key, self.base_url)
+            return ShoprenterAPI(self.api_key, self.base_url) if self.api_key != "mock_key" else MockShoprenterAPI()
         elif self.platform == WebshopPlatform.UNAS:
-            if self.api_key == "mock_key":
-                return MockUNASAPI()
-            else:
-                return UNASAPI(self.api_key, self.base_url)
+            return UNASAPI(self.api_key, self.base_url) if self.api_key != "mock_key" else MockUNASAPI()
         elif self.platform == WebshopPlatform.WOOCOMMERCE:
-            if self.api_key == "mock_key":
-                return MockWooCommerceAPI()
-            else:
-                return WooCommerceAPI(self.api_key, self.base_url)
+            return WooCommerceAPI(self.api_key, self.base_url) if self.api_key != "mock_key" else MockWooCommerceAPI()
         elif self.platform == WebshopPlatform.SHOPIFY:
-            if self.api_key == "mock_key":
-                return MockShopifyAPI()
-            else:
-                return ShopifyAPI(self.api_key, self.base_url)
+            return ShopifyAPI(self.api_key, self.base_url) if self.api_key != "mock_key" else MockShopifyAPI()
         elif self.platform == WebshopPlatform.MOCK:
             # Default mock Shoprenter API
             return MockShoprenterAPI()
         else:
             raise ValueError(f"Unsupported platform: {self.platform}")
-    
-    async def get_products(self, limit: int = 50, offset: int = 0, 
+
+    async def get_products(self, limit: int = 50, offset: int = 0,
                           category: Optional[str] = None) -> List[Product]:
         """Termékek lekérése egységes interfészen keresztül"""
         try:
@@ -73,7 +62,7 @@ class UnifiedWebshopAPI:
         except Exception as e:
             logger.error(f"Unified API hiba - get_products: {e}")
             return []
-    
+
     async def get_product(self, product_id: str) -> Optional[Product]:
         """Egy termék lekérése egységes interfészen keresztül"""
         try:
@@ -81,7 +70,7 @@ class UnifiedWebshopAPI:
         except Exception as e:
             logger.error(f"Unified API hiba - get_product: {e}")
             return None
-    
+
     async def search_products(self, query: str, limit: int = 20) -> List[Product]:
         """Termék keresés egységes interfészen keresztül"""
         try:
@@ -89,7 +78,7 @@ class UnifiedWebshopAPI:
         except Exception as e:
             logger.error(f"Unified API hiba - search_products: {e}")
             return []
-    
+
     async def get_orders(self, limit: int = 50, offset: int = 0) -> List[Order]:
         """Rendelések lekérése egységes interfészen keresztül"""
         try:
@@ -97,7 +86,7 @@ class UnifiedWebshopAPI:
         except Exception as e:
             logger.error(f"Unified API hiba - get_orders: {e}")
             return []
-    
+
     async def get_order(self, order_id: str) -> Optional[Order]:
         """Egy rendelés lekérése egységes interfészen keresztül"""
         try:
@@ -105,7 +94,7 @@ class UnifiedWebshopAPI:
         except Exception as e:
             logger.error(f"Unified API hiba - get_order: {e}")
             return None
-    
+
     async def get_customer(self, customer_id: str) -> Optional[Customer]:
         """Ügyfél adatok lekérése egységes interfészen keresztül"""
         try:
@@ -113,7 +102,7 @@ class UnifiedWebshopAPI:
         except Exception as e:
             logger.error(f"Unified API hiba - get_customer: {e}")
             return None
-    
+
     async def update_order_status(self, order_id: str, status: str) -> bool:
         """Rendelési státusz frissítése egységes interfészen keresztül"""
         try:
@@ -121,12 +110,12 @@ class UnifiedWebshopAPI:
         except Exception as e:
             logger.error(f"Unified API hiba - update_order_status: {e}")
             return False
-    
+
     async def close(self):
         """API kliens lezárása"""
         if hasattr(self.api_client, 'close'):
             await self.api_client.close()
-    
+
     def get_platform_info(self) -> Dict[str, Any]:
         """Platform információk lekérése"""
         return {
@@ -138,28 +127,28 @@ class UnifiedWebshopAPI:
 
 class WebshopManager:
     """Több webshop kezelése egyszerre"""
-    
+
     def __init__(self):
         self.webshops: Dict[str, UnifiedWebshopAPI] = {}
-    
-    def add_webshop(self, name: str, platform: WebshopPlatform, 
+
+    def add_webshop(self, name: str, platform: WebshopPlatform,
                     api_key: str, base_url: str) -> None:
         """Webshop hozzáadása a kezelőhöz"""
         self.webshops[name] = UnifiedWebshopAPI(platform, api_key, base_url)
         logger.info(f"Webshop hozzáadva: {name} ({platform.value})")
-    
+
     def get_webshop(self, name: str) -> Optional[UnifiedWebshopAPI]:
         """Webshop lekérése név alapján"""
         return self.webshops.get(name)
-    
+
     def list_webshops(self) -> List[str]:
         """Elérhető webshopok listája"""
         return list(self.webshops.keys())
-    
+
     async def search_all_products(self, query: str, limit: int = 20) -> Dict[str, List[Product]]:
         """Termék keresés minden webshopban"""
         results = {}
-        
+
         for name, webshop in self.webshops.items():
             try:
                 products = await webshop.search_products(query, limit)
@@ -167,13 +156,13 @@ class WebshopManager:
             except Exception as e:
                 logger.error(f"Hiba a {name} webshop keresésében: {e}")
                 results[name] = []
-        
+
         return results
-    
+
     async def get_product_from_all(self, product_id: str) -> Dict[str, Optional[Product]]:
         """Termék lekérése minden webshopból"""
         results = {}
-        
+
         for name, webshop in self.webshops.items():
             try:
                 product = await webshop.get_product(product_id)
@@ -181,9 +170,9 @@ class WebshopManager:
             except Exception as e:
                 logger.error(f"Hiba a {name} webshop termék lekérésében: {e}")
                 results[name] = None
-        
+
         return results
-    
+
     async def close_all(self):
         """Minden webshop kapcsolat lezárása"""
         for webshop in self.webshops.values():
@@ -225,4 +214,4 @@ def create_shopify_api(api_key: str, base_url: str, use_mock: bool = False) -> U
 
 def create_mock_api() -> UnifiedWebshopAPI:
     """Mock API létrehozása fejlesztéshez"""
-    return UnifiedWebshopAPI(WebshopPlatform.MOCK, "mock_key", "https://mock.webshop.com") 
+    return UnifiedWebshopAPI(WebshopPlatform.MOCK, "mock_key", "https://mock.webshop.com")

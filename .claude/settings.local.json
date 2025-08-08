@@ -3,7 +3,9 @@
     "allow": [
       "mcp__context7__resolve-library-id",
       "mcp__context7__get-library-docs",
-      "Bash(python -m mypy:*)"
+      "Bash(python -m mypy:*)",
+      "Bash(python -m pytest tests/agents/test_marketing_agent_mock.py::TestMarketingAgentMock::test_successful_response -v -s)",
+      "Bash(python -m pytest tests/agents/test_product_info_agent_mock.py::TestProductInfoAgentMock::test_search_products_success -v -s)"
     ],
     "deny": []
   }

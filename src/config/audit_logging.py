@@ -28,27 +28,27 @@ class AuditEventType(Enum):
     SECURITY_ACCOUNT_LOCKED = "security_account_locked"
     SECURITY_IP_BLOCKED = "security_ip_blocked"
     SECURITY_THREAT_DETECTED = "security_threat_detected"
-    
+
     # Data access events
     DATA_ACCESS = "data_access"
     DATA_CREATE = "data_create"
     DATA_UPDATE = "data_update"
     DATA_DELETE = "data_delete"
     DATA_EXPORT = "data_export"
-    
+
     # GDPR events
     GDPR_CONSENT_GRANTED = "gdpr_consent_granted"
     GDPR_CONSENT_REVOKED = "gdpr_consent_revoked"
     GDPR_DATA_DELETION = "gdpr_data_deletion"
     GDPR_DATA_EXPORT = "gdpr_data_export"
     GDPR_DATA_ACCESS_REQUEST = "gdpr_data_access_request"
-    
+
     # Agent events
     AGENT_QUERY = "agent_query"
     AGENT_RESPONSE = "agent_response"
     AGENT_ERROR = "agent_error"
     AGENT_TOOL_USAGE = "agent_tool_usage"
-    
+
     # System events
     SYSTEM_STARTUP = "system_startup"
     SYSTEM_SHUTDOWN = "system_shutdown"
@@ -60,6 +60,7 @@ class AuditSeverity(Enum):
     """Audit súlyossági szintek."""
     LOW = "low"
     MEDIUM = "medium"
+    ERROR = "error"
     HIGH = "high"
     CRITICAL = "critical"
 
@@ -83,45 +84,45 @@ class AuditEvent:
 
 class AuditLogger:
     """Audit logging rendszer."""
-    
+
     def __init__(self, supabase_client=None, log_file_path: Optional[str] = None):
         self.supabase = supabase_client
         self.log_file_path = log_file_path or os.getenv("AUDIT_LOG_FILE", "audit.log")
         self.logger = self._setup_logger()
         self._event_queue = asyncio.Queue()
         self._processing_task = None
-    
+
     def _setup_logger(self) -> logging.Logger:
         """Logger beállítása."""
         audit_logger = logging.getLogger("audit")
         audit_logger.setLevel(logging.INFO)
-        
+
         # File handler
         file_handler = logging.FileHandler(self.log_file_path)
         file_handler.setLevel(logging.INFO)
-        
+
         # Console handler
         console_handler = logging.StreamHandler()
         console_handler.setLevel(logging.WARNING)
-        
+
         # Formatter
         formatter = logging.Formatter(
             '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
         )
         file_handler.setFormatter(formatter)
         console_handler.setFormatter(formatter)
-        
+
         audit_logger.addHandler(file_handler)
         audit_logger.addHandler(console_handler)
-        
+
         return audit_logger
-    
+
     def _generate_event_id(self, event_type: AuditEventType, user_id: Optional[str] = None) -> str:
         """Egyedi esemény azonosító generálása."""
         timestamp = datetime.now(timezone.utc).isoformat()
         base_string = f"{event_type.value}_{timestamp}_{user_id or 'anonymous'}"
         return hashlib.md5(base_string.encode()).hexdigest()
-    
+
     async def log_event(
         self,
         event_type: AuditEventType,
@@ -135,7 +136,7 @@ class AuditLogger:
     ) -> str:
         """
         Audit esemény naplózása.
-        
+
         Args:
             event_type: Esemény típusa
             user_id: Felhasználó azonosító
@@ -145,13 +146,13 @@ class AuditLogger:
             severity: Súlyosság
             details: Részletek
             metadata: Metaadatok
-            
+
         Returns:
             Esemény azonosító
         """
         try:
             event_id = self._generate_event_id(event_type, user_id)
-            
+
             audit_event = AuditEvent(
                 event_id=event_id,
                 event_type=event_type,
@@ -164,40 +165,41 @@ class AuditLogger:
                 details=details or {},
                 metadata=metadata or {}
             )
-            
+
             # Add to queue for async processing
             await self._event_queue.put(audit_event)
-            
+
             # Immediate console log for critical events
             if severity in [AuditSeverity.HIGH, AuditSeverity.CRITICAL]:
                 self.logger.critical(
                     f"CRITICAL AUDIT EVENT: {event_type.value} - User: {user_id} - Details: {details}"
                 )
-            
+
             return event_id
-            
+
         except Exception as e:
             logger.error(f"Audit logging error: {e}")
             return "error"
-    
+
     async def log_security_event(
         self,
         event_type: str,
         user_id: Optional[str] = None,
         details: Optional[Dict[str, Any]] = None,
         ip_address: Optional[str] = None,
-        user_agent: Optional[str] = None
+        user_agent: Optional[str] = None,
+        severity: Optional[AuditSeverity] = None
     ) -> str:
         """
         Biztonsági esemény naplózása.
-        
+
         Args:
             event_type: Esemény típusa
             user_id: Felhasználó azonosító
             details: Részletek
             ip_address: IP cím
             user_agent: User agent
-            
+
         Returns:
             Esemény azonosító
         """
@@ -212,20 +214,20 @@ class AuditLogger:
             "threat_detected": AuditEventType.SECURITY_THREAT_DETECTED,
             "high_threat_detected": AuditEventType.SECURITY_THREAT_DETECTED
         }
-        
+
         audit_event_type = event_type_mapping.get(event_type, AuditEventType.SECURITY_THREAT_DETECTED)
-        severity = AuditSeverity.HIGH if "threat" in event_type else AuditSeverity.MEDIUM
-        
+        computed_severity = severity or (AuditSeverity.HIGH if "threat" in event_type else AuditSeverity.MEDIUM)
+
         return await self.log_event(
             event_type=audit_event_type,
             user_id=user_id,
             ip_address=ip_address,
             user_agent=user_agent,
-            severity=severity,
+            severity=computed_severity,
             details=details,
             metadata={"security_event": True}
         )
-    
+
     async def log_data_access(
         self,
         user_id: str,
@@ -237,7 +239,7 @@ class AuditLogger:
     ) -> str:
         """
         Adathozzáférés naplózása.
-        
+
         Args:
             user_id: Felhasználó azonosító
             data_type: Adattípus
@@ -245,12 +247,12 @@ class AuditLogger:
             success: Sikeres volt-e
             details: Részletek
             session_id: Session azonosító
-            
+
         Returns:
             Esemény azonosító
         """
         severity = AuditSeverity.LOW if success else AuditSeverity.MEDIUM
-        
+
         return await self.log_event(
             event_type=AuditEventType.DATA_ACCESS,
             user_id=user_id,
@@ -264,7 +266,7 @@ class AuditLogger:
             },
             metadata={"data_access": True}
         )
-    
+
     async def log_gdpr_event(
         self,
         event_type: str,
@@ -274,13 +276,13 @@ class AuditLogger:
     ) -> str:
         """
         GDPR esemény naplózása.
-        
+
         Args:
             event_type: Esemény típusa
             user_id: Felhasználó azonosító
             data_type: Adattípus
             details: Részletek
-            
+
         Returns:
             Esemény azonosító
         """
@@ -292,9 +294,9 @@ class AuditLogger:
             "data_export": AuditEventType.GDPR_DATA_EXPORT,
             "data_access_request": AuditEventType.GDPR_DATA_ACCESS_REQUEST
         }
-        
+
         audit_event_type = event_type_mapping.get(event_type, AuditEventType.GDPR_CONSENT_GRANTED)
-        
+
         return await self.log_event(
             event_type=audit_event_type,
             user_id=user_id,
@@ -305,7 +307,7 @@ class AuditLogger:
             },
             metadata={"gdpr_event": True}
         )
-    
+
     async def log_agent_event(
         self,
         event_type: str,
@@ -316,14 +318,14 @@ class AuditLogger:
     ) -> str:
         """
         Agent esemény naplózása.
-        
+
         Args:
             event_type: Esemény típusa
             user_id: Felhasználó azonosító
             agent_name: Agent neve
             details: Részletek
             session_id: Session azonosító
-            
+
         Returns:
             Esemény azonosító
         """
@@ -334,10 +336,10 @@ class AuditLogger:
             "error": AuditEventType.AGENT_ERROR,
             "tool_usage": AuditEventType.AGENT_TOOL_USAGE
         }
-        
+
         audit_event_type = event_type_mapping.get(event_type, AuditEventType.AGENT_QUERY)
         severity = AuditSeverity.LOW if event_type != "error" else AuditSeverity.MEDIUM
-        
+
         return await self.log_event(
             event_type=audit_event_type,
             user_id=user_id,
@@ -349,17 +351,17 @@ class AuditLogger:
             },
             metadata={"agent_event": True}
         )
-    
+
     async def _process_audit_queue(self):
         """Audit események feldolgozása a queue-ból."""
         while True:
             try:
                 # Get event from queue
                 event = await self._event_queue.get()
-                
+
                 # Log to file
                 self.logger.info(f"AUDIT: {json.dumps(asdict(event), default=str)}")
-                
+
                 # Store in database if available
                 if self.supabase:
                     try:
@@ -368,20 +370,20 @@ class AuditLogger:
                         ).execute()
                     except Exception as e:
                         logger.error(f"Database audit logging error: {e}")
-                
+
                 # Mark as done
                 self._event_queue.task_done()
-                
+
             except asyncio.CancelledError:
                 break
             except Exception as e:
                 logger.error(f"Audit queue processing error: {e}")
-    
+
     async def start_processing(self):
         """Audit feldolgozás indítása."""
         if self._processing_task is None:
             self._processing_task = asyncio.create_task(self._process_audit_queue())
-    
+
     async def stop_processing(self):
         """Audit feldolgozás leállítása."""
         if self._processing_task:
@@ -391,7 +393,39 @@ class AuditLogger:
             except asyncio.CancelledError:
                 pass
             self._processing_task = None
-    
+
+    # Convenience instance wrappers expected by tests
+    async def log_agent_interaction(self,
+        user_id: str,
+        agent_name: str,
+        query: str,
+        response: str,
+        session_id: Optional[str] = None,
+        success: bool = True
+    ) -> None:
+        await log_agent_interaction(
+            user_id=user_id,
+            agent_name=agent_name,
+            query=query,
+            response=response,
+            session_id=session_id,
+            success=success
+        )
+
+    async def log_error(self,
+        user_id: Optional[str] = None,
+        message: str = "",
+        details: Optional[Dict[str, Any]] = None,
+        severity: AuditSeverity = AuditSeverity.ERROR
+    ) -> str:
+        return await self.log_event(
+            event_type=AuditEventType.SYSTEM_ERROR,
+            user_id=user_id,
+            severity=severity,
+            details={"message": message, **(details or {})},
+            metadata={"error": True}
+        )
+
     async def get_audit_events(
         self,
         user_id: Optional[str] = None,
@@ -402,64 +436,64 @@ class AuditLogger:
     ) -> List[Dict[str, Any]]:
         """
         Audit események lekérése.
-        
+
         Args:
             user_id: Felhasználó azonosító
             event_type: Esemény típusa
             start_date: Kezdő dátum
             end_date: Záró dátum
             limit: Eredmények száma
-            
+
         Returns:
             Audit események listája
         """
         try:
             if self.supabase:
                 query = self.supabase.table('audit_logs').select('*')
-                
+
                 if user_id:
                     query = query.eq('user_id', user_id)
-                
+
                 if event_type:
                     query = query.eq('event_type', event_type.value)
-                
+
                 if start_date:
                     query = query.gte('timestamp', start_date.isoformat())
-                
+
                 if end_date:
                     query = query.lte('timestamp', end_date.isoformat())
-                
+
                 query = query.order('timestamp', desc=True).limit(limit)
-                
+
                 response = await query.execute()
                 return response.data or []
-            
+
             return []
-            
+
         except Exception as e:
             logger.error(f"Audit events retrieval error: {e}")
             return []
-    
+
     async def cleanup_old_events(self, days: int = 90) -> int:
         """
         Régi audit események törlése.
-        
+
         Args:
             days: Hány napnál régebbi eseményeket töröljünk
-            
+
         Returns:
             Törölt események száma
         """
         try:
             cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
-            
+
             if self.supabase:
                 response = await self.supabase.table('audit_logs').delete().lt(
                     'timestamp', cutoff_date.isoformat()
                 ).execute()
-                
+
                 deleted_count = len(response.data) if response.data else 0
-                
+
                 # Log cleanup
                 await self.log_event(
                     event_type=AuditEventType.SYSTEM_CONFIG_CHANGE,
@@ -471,11 +505,11 @@ class AuditLogger:
                         "cutoff_date": cutoff_date.isoformat()
                     }
                 )
-                
+
                 return deleted_count
-            
+
             return 0
-            
+
         except Exception as e:
             logger.error(f"Audit cleanup error: {e}")
             return 0
@@ -488,10 +522,10 @@ _audit_logger: Optional[AuditLogger] = None
 def get_audit_logger(supabase_client=None) -> AuditLogger:
     """
     Audit logger singleton instance.
-    
+
     Args:
         supabase_client: Supabase kliens
-        
+
     Returns:
         AuditLogger instance
     """
@@ -504,10 +538,10 @@ def get_audit_logger(supabase_client=None) -> AuditLogger:
 async def setup_audit_logging(supabase_client=None) -> AuditLogger:
     """
     Audit logging beállítása.
-    
+
     Args:
         supabase_client: Supabase kliens
-        
+
     Returns:
         AuditLogger instance
     """
@@ -527,10 +561,10 @@ async def shutdown_audit_logging():
 async def log_user_login(user_id: str, ip_address: str, user_agent: str, success: bool = True):
     """Felhasználói bejelentkezés naplózása."""
     audit_logger = get_audit_logger()
-    
+
     event_type = "login" if success else "failed_login"
     severity = AuditSeverity.MEDIUM if success else AuditSeverity.HIGH
-    
+
     await audit_logger.log_security_event(
         event_type=event_type,
         user_id=user_id,
@@ -550,7 +584,7 @@ async def log_agent_interaction(
 ):
     """Agent interakció naplózása."""
     audit_logger = get_audit_logger()
-    
+
     # Log query
     await audit_logger.log_agent_event(
         event_type="query",
@@ -562,7 +596,7 @@ async def log_agent_interaction(
             "success": success
         }
     )
-    
+
     # Log response
     await audit_logger.log_agent_event(
         event_type="response",
@@ -585,7 +619,7 @@ async def log_data_processing(
 ):
     """Adatfeldolgozás naplózása."""
     audit_logger = get_audit_logger()
-    
+
     await audit_logger.log_data_access(
         user_id=user_id,
         data_type=data_type,
@@ -605,7 +639,7 @@ async def log_system_event(
 ):
     """Rendszer esemény naplózása."""
     audit_logger = get_audit_logger()
-    
+
     # Map system event types
     event_type_mapping = {
         "startup": AuditEventType.SYSTEM_STARTUP,
@@ -613,13 +647,35 @@ async def log_system_event(
         "error": AuditEventType.SYSTEM_ERROR,
         "config_change": AuditEventType.SYSTEM_CONFIG_CHANGE
     }
-    
+
     audit_event_type = event_type_mapping.get(event_type, AuditEventType.SYSTEM_ERROR)
-    
+
     await audit_logger.log_event(
         event_type=audit_event_type,
         user_id="system",
         severity=severity,
         details=details or {},
         metadata={"system_event": True}
-    ) 
+    )
+
+    # ------------------------------------------------------------------
+    # Instance-level convenience wrapper to align with tests expecting
+    # audit_logger.log_agent_interaction(...)
+    # ------------------------------------------------------------------
+    async def log_agent_interaction(self,
+        user_id: str,
+        agent_name: str,
+        query: str,
+        response: str,
+        session_id: Optional[str] = None,
+        success: bool = True
+    ) -> None:
+        """Instance wrapper a modul szintű log_agent_interaction-hoz."""
+        await log_agent_interaction(
+            user_id=user_id,
+            agent_name=agent_name,
+            query=query,
+            response=response,
+            session_id=session_id,
+            success=success
+        )

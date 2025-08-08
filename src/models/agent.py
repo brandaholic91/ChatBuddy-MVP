@@ -21,6 +21,8 @@ class AgentType(str, Enum):
     PRODUCT_INFO = "product_info"
     ORDER_STATUS = "order_status"
     RECOMMENDATION = "recommendation"
+    # Alias a visszafelé kompatibilitásért a tesztekhez
+    RECOMMENDATIONS = "recommendation"
     MARKETING = "marketing"
     SOCIAL_MEDIA = "social_media"
     GENERAL = "general"
@@ -54,7 +56,7 @@ class AgentDecision(BaseModel):
     context: Dict[str, Any] = Field(default_factory=dict, description="Döntési kontextus")
     metadata: Optional[Dict[str, Any]] = Field(default=None, description="További metadata")
     timestamp: datetime = Field(default_factory=datetime.now, description="Döntés időpontja")
-    
+
     model_config = ConfigDict(
         validate_assignment=True
     )
@@ -74,7 +76,7 @@ class AgentResponse(BaseModel):
     cost: Optional[float] = Field(default=None, description="Költség")
     metadata: Optional[Dict[str, Any]] = Field(default=None, description="További metadata")
     timestamp: datetime = Field(default_factory=datetime.now, description="Válasz időpontja")
-    
+
     model_config = ConfigDict(
         validate_assignment=True
     )
@@ -87,37 +89,37 @@ class AgentResponse(BaseModel):
 class LangGraphState(TypedDict):
     """
     Egységes LangGraph state management a ChatBuddy MVP projekthez.
-    
+
     Ez a state kezeli az összes agent közötti kommunikációt és adatmegosztást
     a LangGraph workflow-ban.
     """
     # Core message handling
     messages: List[BaseMessage]
     current_agent: str
-    
+
     # User and session context
     user_context: Dict[str, Any]
     session_data: Dict[str, Any]
-    
+
     # Error handling and retry logic
     error_count: int
     retry_attempts: int
-    
+
     # Security and compliance
     security_context: Optional[Any]  # SecurityContext from config
     gdpr_compliance: Optional[Any]   # GDPR compliance layer
     audit_logger: Optional[Any]      # Audit logger
-    
+
     # Agent-specific data
     agent_data: Dict[str, Any]       # Agent-specific data storage
     conversation_history: List[Dict[str, Any]]  # Extended conversation history
-    
+
     # Performance and monitoring
     processing_start_time: Optional[float]
     processing_end_time: Optional[float]
     tokens_used: Optional[int]
     cost: Optional[float]
-    
+
     # Workflow control
     workflow_step: str
     next_agent: Optional[str]
@@ -140,7 +142,7 @@ class AgentState(BaseModel):
     performance_metrics: Dict[str, Any] = Field(default_factory=dict, description="Teljesítmény metrikák")
     configuration: Dict[str, Any] = Field(default_factory=dict, description="Agent konfiguráció")
     updated_at: datetime = Field(default_factory=datetime.now, description="Utolsó frissítés")
-    
+
     model_config = ConfigDict(
         validate_assignment=True
     )
@@ -159,7 +161,7 @@ class AgentTool(BaseModel):
     average_execution_time: Optional[float] = Field(default=None, description="Átlagos végrehajtási idő")
     last_used: Optional[datetime] = Field(default=None, description="Utolsó használat")
     created_at: datetime = Field(default_factory=datetime.now, description="Létrehozás időpontja")
-    
+
     model_config = ConfigDict(
         validate_assignment=True
     )
@@ -178,7 +180,7 @@ class AgentConversation(BaseModel):
     message_count: int = Field(default=0, description="Üzenetek száma")
     is_active: bool = Field(default=True, description="Beszélgetés aktív")
     satisfaction_score: Optional[float] = Field(default=None, ge=0.0, le=5.0, description="Elégedettség pontszám")
-    
+
     model_config = ConfigDict(
         validate_assignment=True
     )
@@ -199,7 +201,7 @@ class AgentPerformance(BaseModel):
     error_rate: float = Field(default=0.0, ge=0.0, le=1.0, description="Hiba arány")
     peak_concurrent_conversations: int = Field(default=0, description="Párhuzamos beszélgetések csúcsa")
     created_at: datetime = Field(default_factory=datetime.now, description="Létrehozás időpontja")
-    
+
     model_config = ConfigDict(
         validate_assignment=True
     )
@@ -220,7 +222,7 @@ class AgentConfig(BaseModel):
     is_active: bool = Field(default=True, description="Agent aktív")
     created_at: datetime = Field(default_factory=datetime.now, description="Létrehozás időpontja")
     updated_at: datetime = Field(default_factory=datetime.now, description="Utolsó frissítés")
-    
+
     model_config = ConfigDict(
         validate_assignment=True
-    ) 
+    )

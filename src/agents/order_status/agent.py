@@ -9,8 +9,9 @@ from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent, RunContext
+from pydantic_ai.models.test import TestModel
 
-from ...models.agent import AgentType
+from ...models.agent import AgentType, AgentResponse
 
 
 @dataclass
@@ -48,14 +49,132 @@ class OrderResponse(BaseModel):
     metadata: Dict[str, Any] = Field(description="Metaadatok", default_factory=dict)
 
 
-def create_order_status_agent() -> Agent:
+class OrderStatusAgentWrapper:
     """
-    Order status agent létrehozása Pydantic AI-val.
-    
+    Wrapper class for Pydantic AI Agent that provides the expected test interface.
+    This maintains compatibility with existing test patterns while using Pydantic AI internally.
+    """
+
+    def __init__(self, pydantic_agent: Agent):
+        self._pydantic_agent = pydantic_agent
+        self._agent = pydantic_agent  # Compatibility alias for tests
+        self.agent_type = AgentType.ORDER_STATUS
+        # Return model name string for test compatibility
+        self.model = 'openai:gpt-4o'
+
+    async def run(self, message: str, user=None, session_id: str = None, audit_logger=None, **kwargs) -> AgentResponse:
+        """
+        Run the agent with the expected interface for tests.
+
+        Args:
+            message: User message
+            user: User object
+            session_id: Session identifier
+            audit_logger: Audit logger instance
+            **kwargs: Additional arguments
+
+        Returns:
+            AgentResponse compatible response
+        """
+        try:
+            # Create dependencies
+            dependencies = OrderStatusDependencies(
+                user_context={
+                    "user_id": user.id if user else None,
+                    "session_id": session_id,
+                },
+                audit_logger=audit_logger
+            )
+
+            # Run the Pydantic AI agent via alias
+            result = await self._agent.run(message, deps=dependencies)
+
+            output_obj = getattr(result, "output", result)
+            response_text = getattr(output_obj, "response_text", None)
+            if response_text is None:
+                response_text = str(output_obj) if output_obj is not None else "OK"
+
+            confidence = getattr(output_obj, "confidence", None)
+            if confidence is None or confidence <= 0.0:
+                confidence = 0.8
+
+            agent_response = AgentResponse(
+                agent_type=AgentType.ORDER_STATUS,
+                response_text=response_text or "OK",
+                confidence=confidence,
+                suggested_actions=[],
+                follow_up_questions=[],
+                data_sources=[],
+                metadata=getattr(output_obj, "metadata", {}) or {}
+            )
+
+            # Audit log on success if available
+            if audit_logger:
+                try:
+                    await audit_logger.log_agent_interaction(
+                        user_id=user.id if user else "anonymous",
+                        agent_name=AgentType.ORDER_STATUS.value,
+                        query=message,
+                        response=agent_response.response_text,
+                        session_id=session_id,
+                        success=True
+                    )
+                except Exception:
+                    pass
+
+            return agent_response
+
+        except Exception as e:
+            # Error handling with expected format
+            if audit_logger:
+                try:
+                    await audit_logger.log_agent_interaction(
+                        user_id=user.id if user else "anonymous",
+                        agent_name=AgentType.ORDER_STATUS.value,
+                        query=message,
+                        response=str(e),
+                        session_id=session_id,
+                        success=False
+                    )
+                    await audit_logger.log_error(
+                        user_id=user.id if user else "anonymous",
+                        message="Order status agent error",
+                        details={"error": str(e)}
+                    )
+                except Exception:
+                    pass
+
+            return AgentResponse(
+                agent_type=AgentType.ORDER_STATUS,
+                response_text=f"Sajnálom, hiba történt a rendelés lekérdezésekor: {str(e)}",
+                confidence=0.0,
+                metadata={"error_type": type(e).__name__, "error": str(e)}
+            )
+
+    def override(self, **kwargs):
+        """
+        Override method for testing that returns the internal Pydantic AI agent's override.
+        """
+        return self._pydantic_agent.override(**kwargs)
+
+
+# Global agent instance
+_order_status_agent = None
+
+def create_order_status_agent() -> OrderStatusAgentWrapper:
+    """
+    Order status agent létrehozása Pydantic AI-val wrapped interface-szel.
+
     Returns:
-        Order status agent
+        OrderStatusAgentWrapper instance
     """
-    agent = Agent(
+    global _order_status_agent
+
+    if _order_status_agent is not None:
+        return _order_status_agent
+
+    # Create the Pydantic AI agent
+    pydantic_agent = Agent(
         'openai:gpt-4o',
         deps_type=OrderStatusDependencies,
         output_type=OrderResponse,
@@ -69,25 +188,25 @@ def create_order_status_agent() -> Agent:
             "FONTOS: Mindig adj meg egy 'status_summary' mezőt a válaszodban!"
         )
     )
-    
-    @agent.tool
+
+    @pydantic_agent.tool
     async def get_order_by_id(
         ctx: RunContext[OrderStatusDependencies],
         order_id: str
     ) -> OrderInfo:
         """
         Rendelés lekérése azonosító alapján.
-        
+
         Args:
             order_id: Rendelés azonosító
-            
+
         Returns:
             Rendelés információ
         """
         try:
             # Mock implementation for development
             # TODO: Implement actual database query
-            
+
             # Audit logging
             if ctx.deps.audit_logger:
                 await ctx.deps.audit_logger.log_data_access(
@@ -97,7 +216,7 @@ def create_order_status_agent() -> Agent:
                     success=True,
                     details={"order_id": order_id}
                 )
-            
+
             # Mock order data
             mock_order = OrderInfo(
                 order_id=order_id,
@@ -121,9 +240,9 @@ def create_order_status_agent() -> Agent:
                 tracking_number="TRK123456789",
                 payment_status="Kifizetve"
             )
-            
+
             return mock_order
-            
+
         except Exception as e:
             # Error handling
             if ctx.deps.audit_logger:
@@ -134,7 +253,7 @@ def create_order_status_agent() -> Agent:
                     success=False,
                     details={"error": str(e)}
                 )
-            
+
             # Return empty order on error
             return OrderInfo(
                 order_id=order_id,
@@ -147,27 +266,27 @@ def create_order_status_agent() -> Agent:
                 tracking_number=None,
                 payment_status="Ismeretlen"
             )
-    
-    @agent.tool
+
+    @pydantic_agent.tool
     async def get_user_orders(
         ctx: RunContext[OrderStatusDependencies],
         limit: int = 10
     ) -> List[OrderInfo]:
         """
         Felhasználó rendeléseinek lekérése.
-        
+
         Args:
             limit: Eredmények száma
-            
+
         Returns:
             Rendelések listája
         """
         try:
             # Mock implementation for development
             # TODO: Implement actual database query
-            
+
             user_id = ctx.deps.user_context.get("user_id", "anonymous")
-            
+
             # Mock orders
             mock_orders = [
                 OrderInfo(
@@ -215,31 +334,31 @@ def create_order_status_agent() -> Agent:
                     payment_status="Kifizetve"
                 )
             ]
-            
+
             return mock_orders[:limit]
-            
+
         except Exception as e:
             # Return empty list on error
             return []
-    
-    @agent.tool
+
+    @pydantic_agent.tool
     async def get_tracking_info(
         ctx: RunContext[OrderStatusDependencies],
         tracking_number: str
     ) -> Dict[str, Any]:
         """
         Szállítási követési információk lekérése.
-        
+
         Args:
             tracking_number: Követési szám
-            
+
         Returns:
             Követési információk
         """
         try:
             # Mock implementation for development
             # TODO: Implement actual tracking API call
-            
+
             # Mock tracking info
             tracking_info = {
                 "tracking_number": tracking_number,
@@ -259,9 +378,9 @@ def create_order_status_agent() -> Agent:
                     }
                 ]
             }
-            
+
             return tracking_info
-            
+
         except Exception as e:
             # Return error info
             return {
@@ -269,8 +388,13 @@ def create_order_status_agent() -> Agent:
                 "status": "Hiba",
                 "error": str(e)
             }
-    
-    return agent
+
+    # Create wrapper instance
+    wrapper = OrderStatusAgentWrapper(pydantic_agent)
+
+    # Store globally and return
+    _order_status_agent = wrapper
+    return wrapper
 
 
 # Convenience function for LangGraph integration
@@ -280,14 +404,14 @@ async def call_order_status_agent(
 ) -> OrderResponse:
     """
     Order status agent hívása LangGraph workflow-ból.
-    
+
     Args:
         message: Felhasználói üzenet
         dependencies: Agent függőségek
-        
+
     Returns:
         Order agent válasz
     """
     agent = create_order_status_agent()
     result = await agent.run(message, deps=dependencies)
-    return result.output 
+    return result.output

@@ -9,8 +9,9 @@ from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 from pydantic import BaseModel, Field
 from pydantic_ai import Agent, RunContext
+from pydantic_ai.models.test import TestModel
 
-from ...models.agent import AgentType
+from ...models.agent import AgentType, AgentResponse
 
 
 @dataclass
@@ -32,22 +33,105 @@ class GeneralResponse(BaseModel):
     metadata: Dict[str, Any] = Field(description="Metaadatok", default_factory=dict)
 
 
+class GeneralAgentWrapper:
+    """
+    Wrapper class for Pydantic AI Agent that provides the expected test interface.
+    This maintains compatibility with existing test patterns while using Pydantic AI internally.
+    """
+    
+    def __init__(self, pydantic_agent: Agent):
+        self._pydantic_agent = pydantic_agent
+        self.agent_type = AgentType.GENERAL
+        self.model = pydantic_agent.model
+    
+    async def run(self, message: str, user=None, session_id: str = None, audit_logger=None, **kwargs) -> AgentResponse:
+        """
+        Run the agent with the expected interface for tests.
+        
+        Args:
+            message: User message
+            user: User object
+            session_id: Session identifier
+            audit_logger: Audit logger instance
+            **kwargs: Additional arguments
+            
+        Returns:
+            AgentResponse compatible response
+        """
+        try:
+            # Create dependencies
+            dependencies = GeneralDependencies(
+                user_context={
+                    "user_id": user.id if user else None,
+                    "session_id": session_id,
+                },
+                audit_logger=audit_logger
+            )
+            
+            # Run the Pydantic AI agent
+            result = await self._pydantic_agent.run(message, deps=dependencies)
+            
+            # Convert to AgentResponse format expected by tests
+            return AgentResponse(
+                agent_type=AgentType.GENERAL,
+                response_text=result.output.response_text,
+                confidence=result.output.confidence,
+                suggested_actions=result.output.suggested_actions or [],
+                follow_up_questions=[],
+                data_sources=[],
+                metadata=result.output.metadata
+            )
+            
+        except Exception as e:
+            # Error handling with expected format
+            if audit_logger:
+                try:
+                    await audit_logger.log_agent_event(
+                        event_type="agent_execution_error",
+                        user_id=user.id if user else "anonymous",
+                        agent_name=AgentType.GENERAL.value,
+                        details={
+                            "message": message,
+                            "response": "Hiba történt az általános kérdés megválaszolásakor.",
+                            "error": str(e),
+                            "success": False
+                        },
+                        session_id=session_id
+                    )
+                except:
+                    pass  # Don't fail if audit logging fails
+            
+            return AgentResponse(
+                agent_type=AgentType.GENERAL,
+                response_text="Sajnálom, hiba történt az általános kérdés megválaszolásakor.",
+                confidence=0.0,
+                metadata={"error_type": type(e).__name__, "error": str(e)}
+            )
+    
+    def override(self, **kwargs):
+        """
+        Override method for testing that returns the internal Pydantic AI agent's override.
+        """
+        return self._pydantic_agent.override(**kwargs)
+
+
 # Global agent instance
 _general_agent = None
 
-def create_general_agent() -> Agent:
+def create_general_agent() -> GeneralAgentWrapper:
     """
-    General agent létrehozása Pydantic AI-val.
+    General agent létrehozása Pydantic AI-val wrapped interface-szel.
     
     Returns:
-        General agent
+        GeneralAgentWrapper instance
     """
     global _general_agent
     
     if _general_agent is not None:
         return _general_agent
     
-    agent = Agent(
+    # Create the Pydantic AI agent
+    pydantic_agent = Agent(
         'openai:gpt-4o',
         deps_type=GeneralDependencies,
         output_type=GeneralResponse,
@@ -61,7 +145,7 @@ def create_general_agent() -> Agent:
         )
     )
     
-    @agent.tool
+    @pydantic_agent.tool
     async def get_help_topics(
         ctx: RunContext[GeneralDependencies]
     ) -> List[str]:
@@ -94,7 +178,7 @@ def create_general_agent() -> Agent:
             # TODO: Implementálni error handling-et
             raise Exception(f"Hiba a segítség témák lekérésekor: {str(e)}")
     
-    @agent.tool
+    @pydantic_agent.tool
     async def get_contact_info(
         ctx: RunContext[GeneralDependencies]
     ) -> Dict[str, Any]:
@@ -138,7 +222,7 @@ def create_general_agent() -> Agent:
             # TODO: Implementálni error handling-et
             raise Exception(f"Hiba a kapcsolatfelvételi információk lekérésekor: {str(e)}")
     
-    @agent.tool
+    @pydantic_agent.tool
     async def get_faq_answers(
         ctx: RunContext[GeneralDependencies],
         question: str
@@ -198,7 +282,7 @@ def create_general_agent() -> Agent:
             # TODO: Implementálni error handling-et
             raise Exception(f"Hiba a FAQ válaszok lekérésekor: {str(e)}")
     
-    @agent.tool
+    @pydantic_agent.tool
     async def get_website_info(
         ctx: RunContext[GeneralDependencies]
     ) -> Dict[str, Any]:
@@ -243,7 +327,7 @@ def create_general_agent() -> Agent:
             # TODO: Implementálni error handling-et
             raise Exception(f"Hiba a weboldal információk lekérésekor: {str(e)}")
     
-    @agent.tool
+    @pydantic_agent.tool
     async def get_user_guide(
         ctx: RunContext[GeneralDependencies],
         topic: str
@@ -317,9 +401,12 @@ def create_general_agent() -> Agent:
             # TODO: Implementálni error handling-et
             raise Exception(f"Hiba a felhasználói útmutató lekérésekor: {str(e)}")
     
+    # Create wrapper instance
+    wrapper = GeneralAgentWrapper(pydantic_agent)
+    
     # Store globally and return
-    _general_agent = agent
-    return agent
+    _general_agent = wrapper
+    return wrapper
 
 
 # Export tool functions for testing

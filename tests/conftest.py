@@ -21,25 +21,25 @@ from tests.mocks import MockAIMessage, MockHumanMessage, MockChatOpenAI, MockSup
 @pytest.fixture(autouse=True, scope="session")
 def mock_external_dependencies():
     """Auto-mock only essential external dependencies to avoid conflicts."""
-    
+
     patches = [
         # LangChain core components
         patch('langchain_core.messages.AIMessage', MockAIMessage),
         patch('langchain_core.messages.HumanMessage', MockHumanMessage),
         patch('langchain_openai.ChatOpenAI', MockChatOpenAI),
-        
+
         # OpenAI clients - use AsyncMock where awaited
         patch('openai.AsyncOpenAI', AsyncMock),
         patch('openai.OpenAI', MagicMock),
-        
+
         # External HTTP requests
         patch('requests.get', MagicMock),
     ]
-    
+
     # Start all patches
     mocks = [p.start() for p in patches]
     yield mocks
-    
+
     # Stop all patches
     for p in patches:
         p.stop()
@@ -54,7 +54,7 @@ def real_openai_client():
     import openai
     return openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY", "test-key"))
 
-@pytest.fixture(scope="session") 
+@pytest.fixture(scope="session")
 def real_supabase_client():
     """Valódi Supabase kliens integráció tesztekhez."""
     from supabase import create_client
@@ -87,7 +87,7 @@ def sample_user():
 def sample_user_context():
     return {
         "user_id": "test_user_123",
-        "session_id": "session_456", 
+        "session_id": "session_456",
         "language": "hu",
         "timezone": "Europe/Budapest"
     }
@@ -252,7 +252,7 @@ def sample_test_data():
                 "preferences": {"language": "hu", "notifications": True}
             },
             {
-                "id": "user_2", 
+                "id": "user_2",
                 "email": "user2@example.com",
                 "name": "User Two",
                 "preferences": {"language": "en", "notifications": False}
@@ -270,7 +270,7 @@ def sample_test_data():
                 "id": "prod_2",
                 "name": "Phone",
                 "price": 80000.0,
-                "category": "electronics", 
+                "category": "electronics",
                 "available": False
             }
         ],
@@ -283,7 +283,7 @@ def sample_test_data():
             },
             {
                 "id": "order_2",
-                "user_id": "user_2", 
+                "user_id": "user_2",
                 "status": "pending",
                 "total": 80000.0
             }

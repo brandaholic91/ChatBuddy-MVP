@@ -426,10 +426,10 @@ async def chat_endpoint(payload: ChatRequest, request: Request):
             raise ChatBuddyError(error_key="INVALID_INPUT", message="Túl hosszú üzenet (max 4000 karakter).")
 
         # Import security utilities
-        from src.config.security import sanitize_string, get_threat_detector
+        from src.config.security import InputValidator, get_threat_detector
 
         # Sanitize input message
-        sanitized_message = sanitize_string(payload.message, max_length=4000)
+        sanitized_message = InputValidator.sanitize_string(payload.message, max_length=4000)
         if not sanitized_message:
             raise ChatBuddyError(error_key="INVALID_INPUT", message="Érvénytelen üzenet tartalom.")
 
@@ -438,12 +438,12 @@ async def chat_endpoint(payload: ChatRequest, request: Request):
 
         # Threat detection
         threat_detector = get_threat_detector()
-        if threat_detector.should_block_request(request.message):
+        if threat_detector.should_block_request(sanitized_message):
             await audit_logger.log_security_event(
                 event_type="threat_detected",
-                user_id=request.user_id or "anonymous",
+                user_id=payload.user_id or "anonymous",
                 details={
-                    "message": request.message[:100],  # Only first 100 chars
+                    "message": sanitized_message[:100],  # Only first 100 chars
                     "source_ip": source_ip,
                     "user_agent": user_agent
                 },
@@ -452,7 +452,7 @@ async def chat_endpoint(payload: ChatRequest, request: Request):
             raise ChatBuddyError(error_key="UNAUTHORIZED_ACCESS", message="Kérés blokkolva biztonsági okokból.")
 
         # Replace original message with sanitized version
-        request.message = sanitized_message
+        payload.message = sanitized_message
         await audit_logger.log_security_event(
             event_type="chat_request",
             user_id=payload.user_id or "anonymous",
@@ -467,12 +467,19 @@ async def chat_endpoint(payload: ChatRequest, request: Request):
             user = User(id=payload.user_id, email="user@example.com")  # Placeholder email
 
         # Koordinátor agent hívása biztonsági paraméterekkel
-        agent_response = await PerformanceTracker("process_coordinator_message").measure_async(
-            process_coordinator_message,
-            message=sanitized_message,
-            user=user,
-            session_id=payload.session_id
-        )
+        # process_coordinator_message egy async generátor, gyűjtsük az utolsó választ
+        final_response = None
+        async def _collect_stream():
+            nonlocal final_response
+            async for chunk in process_coordinator_message(
+                message=sanitized_message,
+                user=user,
+                session_id=payload.session_id
+            ):
+                final_response = chunk
+            return final_response
+
+        agent_response = await PerformanceTracker("process_coordinator_message").measure_async(_collect_stream)
 
         # ChatResponse létrehozása
         response = ChatResponse(

@@ -15,7 +15,7 @@ class MockChatOpenAI:
     def __init__(self, model: str = "gpt-4", **kwargs):
         self.model = model
         self.temperature = kwargs.get('temperature', 0.7)
-    
+
     async def agenerate(self, messages, **kwargs):
         return MockLLMResponse("Mock AI response")
 
@@ -31,7 +31,7 @@ class MockMessage:
     def __init__(self, content):
         self.content = content
 
-# Supabase Mocks  
+# Supabase Mocks
 class MockSupabaseClient:
     def table(self, name): return MockTable(name)
     def auth(self): return MockAuth()
@@ -71,14 +71,13 @@ class MockRedisClient:
     async def ping(self): return True
 
 # WebShop Integration Mocks
+from unittest.mock import AsyncMock
+
 class MockWebShopAPI:
-    async def get_products(self, limit: int = 50, offset: int = 0, category: str | None = None):
-        return [{"id": 1, "name": "Test Product"}]
-    async def get_orders(self, limit: int = 50, offset: int = 0):
-        return [{"id": 1, "status": "completed"}]
-    async def search_products(self, query: str, limit: int = 20):
-        return [{"id": 2, "name": "Searched Product", "price": 100.0}]
-    async def get_product(self, product_id: str):
-        return {"id": product_id, "name": "Single Product", "price": 50.0}
-    async def update_order_status(self, order_id: str, status: str) -> bool:
-        return True
+    def __init__(self):
+        # Define AsyncMock methods so that tests can override `.return_value` safely
+        self.get_products = AsyncMock(return_value=[{"id": 1, "name": "Test Product"}])
+        self.get_orders = AsyncMock(return_value=[{"id": 1, "status": "completed"}])
+        self.search_products = AsyncMock(return_value=[{"id": 2, "name": "Searched Product", "price": 100.0}])
+        self.get_product = AsyncMock(return_value={"id": "prod_1", "name": "Single Product", "price": 50.0})
+        self.update_order_status = AsyncMock(return_value=True)
