@@ -12,7 +12,7 @@ from src.agents.base.base_agent import BaseAgent, BaseDependencies, BaseResponse
 from src.models.agent import AgentType
 
 
-class TestAgent(BaseAgent):
+class MockTestAgent(BaseAgent):
     """Test implementation of BaseAgent."""
     
     @property
@@ -53,7 +53,7 @@ def base_dependencies():
 @pytest.fixture
 def test_agent():
     """Create test agent instance."""
-    return TestAgent()
+    return MockTestAgent()
 
 
 @pytest.mark.unit
@@ -70,7 +70,7 @@ class TestBaseAgent:
     
     def test_agent_initialization_with_custom_model(self):
         """Test agent initialization with custom model."""
-        custom_agent = TestAgent(model='openai:gpt-3.5-turbo')
+        custom_agent = MockTestAgent(model='openai:gpt-3.5-turbo')
         assert custom_agent.model == 'openai:gpt-3.5-turbo'
     
     @patch('src.agents.base.base_agent.Agent')

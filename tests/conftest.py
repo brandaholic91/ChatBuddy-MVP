@@ -4,173 +4,118 @@ import os
 # Add project root to the Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-"""
-Pytest configuration and fixtures for Chatbuddy MVP tests.
-"""
+"""Pytest konfigurációk és fixtures."""
 
 import pytest
 import pytest_asyncio
 import asyncio
-from unittest.mock import Mock, AsyncMock, patch
+from unittest.mock import Mock, AsyncMock, patch, MagicMock
 from typing import Dict, Any, List
-from pydantic_ai.models.test import TestModel
 
+from tests.mocks import MockAIMessage, MockHumanMessage, MockChatOpenAI, MockSupabaseClient, MockRedisClient
 
-@pytest.fixture(autouse=True)
-def mock_api_keys():
-    """Mock API keys for testing."""
-    with patch.dict('os.environ', {
-        'OPENAI_API_KEY': 'test_openai_key_for_testing_only',
-        'ANTHROPIC_API_KEY': 'test_anthropic_key_for_testing_only',
-        'GOOGLE_API_KEY': 'test_google_key_for_testing_only'
-    }):
-        yield
+# ===========================================
+# MOCK FIXTURES (90% tesztek)
+# ===========================================
 
+@pytest.fixture(autouse=True, scope="session")
+def mock_external_dependencies():
+    """Auto-mock only essential external dependencies to avoid conflicts."""
+    
+    patches = [
+        # LangChain core components
+        patch('langchain_core.messages.AIMessage', MockAIMessage),
+        patch('langchain_core.messages.HumanMessage', MockHumanMessage),
+        patch('langchain_openai.ChatOpenAI', MockChatOpenAI),
+        
+        # OpenAI clients - use AsyncMock where awaited
+        patch('openai.AsyncOpenAI', AsyncMock),
+        patch('openai.OpenAI', MagicMock),
+        
+        # External HTTP requests
+        patch('requests.get', MagicMock),
+    ]
+    
+    # Start all patches
+    mocks = [p.start() for p in patches]
+    yield mocks
+    
+    # Stop all patches
+    for p in patches:
+        p.stop()
 
-@pytest.fixture
-def test_model():
-    """Test model for agent testing."""
-    return TestModel()
-
-
-@pytest.fixture
-def mock_supabase_client():
-    """Mock Supabase client for testing."""
-    mock_client = Mock()
-    mock_client.table = Mock()
-    mock_client.rpc = AsyncMock()
-    mock_client.auth = Mock()
-    mock_client.storage = Mock()
-    mock_client.functions = Mock()
-    return mock_client
-
-
-@pytest.fixture
-def mock_webshop_client():
-    """Mock webshop API client for testing."""
-    mock_client = Mock()
-    mock_client.search_products = AsyncMock()
-    mock_client.get_product = AsyncMock()
-    mock_client.get_order = AsyncMock()
-    mock_client.create_order = AsyncMock()
-    mock_client.update_order = AsyncMock()
-    return mock_client
-
-
-import redis.asyncio as redis
-from dotenv import load_dotenv
-
-# Load environment variables from .env file
-load_dotenv()
-
-# Set testing environment variable
-os.environ['TESTING'] = 'true'
-
+# ===========================================
+# REAL INTEGRATION FIXTURES (10% tesztek)
+# ===========================================
 
 @pytest.fixture(scope="session")
-def event_loop():
-    """Create an instance of the default event loop for each test session."""
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
+def real_openai_client():
+    """Valódi OpenAI kliens integráció tesztekhez."""
+    import openai
+    return openai.OpenAI(api_key=os.getenv("OPENAI_API_KEY", "test-key"))
 
+@pytest.fixture(scope="session") 
+def real_supabase_client():
+    """Valódi Supabase kliens integráció tesztekhez."""
+    from supabase import create_client
+    return create_client(
+        os.getenv("SUPABASE_URL", "http://localhost:54321"),
+        os.getenv("SUPABASE_ANON_KEY", "test-key")
+    )
 
-@pytest_asyncio.fixture(scope="function")
-async def redis_test_client():
-    """
-    Fixture to create a real Redis client for testing, connected to a test database.
-    Flushes the test database after the test session.
-    """
-    redis_host = os.getenv("REDIS_HOST", "localhost")
-    redis_port = int(os.getenv("REDIS_PORT", 6379))
-    redis_password = os.getenv("REDIS_PASSWORD", None)
-    test_db = 1  # Use a separate DB for tests
-    
-    try:
-        client = redis.Redis(
-            host=redis_host,
-            port=redis_port,
-            password=redis_password,
-            db=test_db,
-            decode_responses=True  # Automatically decode responses to strings
-        )
-        await client.ping()
-    except Exception as e:
-        pytest.fail(f"Redis connection failed: {e}")
-
-    yield client
-
-    # Teardown: flush the test database and close the connection
-    await client.flushdb()
-    await client.close()
-
+# ===========================================
+# COMMON AGENT FIXTURES
+# ===========================================
 
 @pytest.fixture
-def mock_redis_client():
-    """Mock Redis client for testing."""
-    mock_client = Mock()
-    mock_client.get = AsyncMock()
-    mock_client.set = AsyncMock()
-    mock_client.delete = AsyncMock()
-    mock_client.exists = AsyncMock()
-    mock_client.expire = AsyncMock()
-    return mock_client
-
+def mock_audit_logger():
+    """Common audit logger mock for all agent tests."""
+    from src.config.audit_logging import AuditLogger
+    return AsyncMock(spec=AuditLogger)
 
 @pytest.fixture
-def mock_langgraph_client():
-    """Mock LangGraph client for testing."""
-    mock_client = Mock()
-    mock_client.invoke = AsyncMock()
-    mock_client.stream = AsyncMock()
-    mock_client.get_state = AsyncMock()
-    return mock_client
+def sample_user():
+    """Common user fixture for all agent tests."""
+    from src.models.user import User
+    return User(id="test_user_123", email="test@example.com")
 
-
-@pytest.fixture
-def mock_openai_client():
-    """Mock OpenAI client for testing."""
-    mock_client = Mock()
-    mock_client.chat.completions.create = AsyncMock()
-    mock_client.embeddings.create = AsyncMock()
-    return mock_client
-
+# ===========================================
+# TEST DATA FIXTURES
+# ===========================================
 
 @pytest.fixture
-def mock_anthropic_client():
-    """Mock Anthropic client for testing."""
-    mock_client = Mock()
-    mock_client.messages.create = AsyncMock()
-    return mock_client
-
-
-@pytest.fixture
-def mock_sendgrid_client():
-    """Mock SendGrid client for testing."""
-    mock_client = Mock()
-    mock_client.send = AsyncMock()
-    return mock_client
-
+def sample_user_context():
+    return {
+        "user_id": "test_user_123",
+        "session_id": "session_456", 
+        "language": "hu",
+        "timezone": "Europe/Budapest"
+    }
 
 @pytest.fixture
-def mock_twilio_client():
-    """Mock Twilio client for testing."""
-    mock_client = Mock()
-    mock_client.messages.create = AsyncMock()
-    return mock_client
+def sample_chat_request():
+    return {
+        "message": "Szia! Segítenél termékeket keresni?",
+        "user_id": "test_user_123",
+        "session_id": "session_456"
+    }
 
+@pytest.fixture
+def sample_products():
+    return [
+        {"id": 1, "name": "iPhone 15", "price": 350000, "category": "electronics"},
+        {"id": 2, "name": "Samsung Galaxy", "price": 280000, "category": "electronics"},
+        {"id": 3, "name": "Nike cipő", "price": 45000, "category": "fashion"}
+    ]
 
 @pytest.fixture
 def sample_user_data():
     """Sample user data for testing."""
     return {
-        "id": "test_user_123",
-        "email": "test@example.com",
-        "name": "Test User",
-        "preferences": {
-            "language": "hu",
-            "notifications": True
-        }
+        "id": "test_user_1",
+        "email": "user1@example.com",
+        "name": "User One",
+        "preferences": {"language": "hu", "notifications": True}
     }
 
 

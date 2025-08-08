@@ -400,7 +400,7 @@ async def get_csrf_token(request: Request):
 # Chat endpoints
 @app.post("/api/v1/chat", response_model=ChatResponse)
 @limiter.limit("50/minute")
-async def chat_endpoint(request: ChatRequest, request_obj: Request):
+async def chat_endpoint(payload: ChatRequest, request: Request):
     """
     Chat endpoint - Koordinátor Agent használatával biztonsági fókusszal.
 
@@ -415,21 +415,21 @@ async def chat_endpoint(request: ChatRequest, request_obj: Request):
     tracker.start()
     try:
         # Extract security information
-        source_ip = request_obj.client.host if request_obj.client else None
-        user_agent = request_obj.headers.get("user-agent")
+        source_ip = request.client.host if request.client else None
+        user_agent = request.headers.get("user-agent")
 
         # Enhanced Input validation and sanitization
-        if not request.message or len(request.message.strip()) == 0:
+        if not payload.message or len(payload.message.strip()) == 0:
             raise ChatBuddyError(error_key="INVALID_INPUT", message="Üres üzenet.")
 
-        if len(request.message) > 4000:  # Increased limit
+        if len(payload.message) > 4000:  # Increased limit
             raise ChatBuddyError(error_key="INVALID_INPUT", message="Túl hosszú üzenet (max 4000 karakter).")
 
         # Import security utilities
         from src.config.security import sanitize_string, get_threat_detector
 
         # Sanitize input message
-        sanitized_message = sanitize_string(request.message, max_length=4000)
+        sanitized_message = sanitize_string(payload.message, max_length=4000)
         if not sanitized_message:
             raise ChatBuddyError(error_key="INVALID_INPUT", message="Érvénytelen üzenet tartalom.")
 
@@ -455,29 +455,29 @@ async def chat_endpoint(request: ChatRequest, request_obj: Request):
         request.message = sanitized_message
         await audit_logger.log_security_event(
             event_type="chat_request",
-            user_id=request.user_id or "anonymous",
-            details={"message_length": len(request.message)},
+            user_id=payload.user_id or "anonymous",
+            details={"message_length": len(sanitized_message)},
             ip_address=source_ip
         )
 
         # Felhasználó objektum létrehozása (placeholder)
         user = None
-        if request.user_id:
+        if payload.user_id:
             # Note: ChatRequest nem tartalmaz user_email mezőt
-            user = User(id=request.user_id, email="user@example.com")  # Placeholder email
+            user = User(id=payload.user_id, email="user@example.com")  # Placeholder email
 
         # Koordinátor agent hívása biztonsági paraméterekkel
         agent_response = await PerformanceTracker("process_coordinator_message").measure_async(
             process_coordinator_message,
-            message=request.message,
+            message=sanitized_message,
             user=user,
-            session_id=request.session_id
+            session_id=payload.session_id
         )
 
         # ChatResponse létrehozása
         response = ChatResponse(
             message=agent_response.response_text,
-            session_id=request.session_id,
+            session_id=payload.session_id,
             timestamp=datetime.now(timezone.utc),
             agent_used=agent_response.agent_type.value,
             metadata=agent_response.metadata
@@ -490,7 +490,7 @@ async def chat_endpoint(request: ChatRequest, request_obj: Request):
         audit_logger = get_audit_logger()
         await audit_logger.log_security_event(
             event_type=f"chat_error_{e.error_key}",
-            user_id=request.user_id or "anonymous",
+            user_id=payload.user_id or "anonymous",
             details=e.to_dict(),
             ip_address=source_ip if 'source_ip' in locals() else None,
             severity=AuditSeverity.ERROR
@@ -511,7 +511,7 @@ async def chat_endpoint(request: ChatRequest, request_obj: Request):
 
         await audit_logger.log_security_event(
             event_type=f"chat_error_{error_key}",
-            user_id=request.user_id or "anonymous",
+            user_id=payload.user_id or "anonymous",
             details={
                 "error_key": error_key,
                 "message": chat_buddy_error.message,
